@@ -1,0 +1,121 @@
+pipeline {
+    agent any
+    
+    environment{
+        BRANCH_NAME = "master"
+        CLIENT_MACHINE_PROVISIONING_REPO_URL = "https://gerrit.ericsson.se/ENMaaS/enm-public-cloud/client-machine-provisioning.git"
+        TERRAFORM_WRAPPER_CLI_REPO_URL = "https://gerrit.ericsson.se/ENMaaS/enm-public-cloud/terraform-wrapper-cli.git"
+        TERRAFORM_TEMPLATES_REPO_URL = "https://gerrit.ericsson.se/ENMaaS/enm-public-cloud/terraform-templates.git"
+    }
+    
+    parameters {
+        string(name: 'CONTAINER_NAME', defaultValue: 'nemesis_build_container_$BUILD_NUMBER', description: 'Container spinned up for task execution')
+        string(name: 'TAG', defaultValue: '1.0.$BUILD_NUMBER', description: 'Version Tag for the PCI docker image')
+    }
+    
+    stages{
+        stage('Gerrit Checkout') {
+            steps {
+                parallel(
+                    ansible: {
+                        echo '########Checking out Ansible playbook project########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'client-machine-provisioning']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[url: env.CLIENT_MACHINE_PROVISIONING_REPO_URL]]])
+                    },
+                    wrapper: {
+                        echo '########Checking out Terraform wrapper CLI########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'terraform-wrapper-cli']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[url: env.TERRAFORM_WRAPPER_CLI_REPO_URL]]])
+                    },
+                    templates: {
+                        echo '########Checking out Terraform templates########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'terraform-templates']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[url: env.TERRAFORM_TEMPLATES_REPO_URL]]])
+                    }
+                    )
+            }
+        }
+        
+        stage('Docker Login') {
+            steps {
+                withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'DOCKER_LOGIN_CREDENTIALS', usernameVariable: 'ARM_USER', passwordVariable: 'ARM_PASS']]) {
+                    sh "docker login armdocker.rnd.ericsson.se --username $ARM_USER --password $ARM_PASS"
+                }
+            }
+        }
+        
+        stage('UnitTest and Build') {
+            steps {
+                sh """
+                docker run -it -d --name ${params.CONTAINER_NAME} ammarov/python3_centos
+                docker cp terraform-wrapper-cli ${params.CONTAINER_NAME}:/tmp
+                docker exec -w /tmp/terraform-wrapper-cli ${params.CONTAINER_NAME} ./build.sh
+                docker cp ${params.CONTAINER_NAME}:/tmp/terraform-wrapper-cli/terraform_wrapper_packaged.tar.gz .
+                """
+            }
+        }
+        
+        stage('Build PCI Image') {
+            steps {
+                sh """
+                mkdir input
+                mv terraform-wrapper-cli/src/executor/input_file/aws_input.json input/input.json
+                mv terraform-wrapper-cli/Dockerfile .
+                docker build -t armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface:${params.TAG} .
+                """
+            }
+        }
+        
+        stage('Push PCI Image to Repo') {
+            steps {
+                sh """
+                docker tag armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface:${params.TAG} \
+                armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface:latest
+                docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface:${params.TAG}
+                docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface:latest
+                """
+                
+            }
+        }
+        
+        stage('Container cleanup') {
+            steps {
+                sh """
+                docker ps -a
+                docker stop ${params.CONTAINER_NAME}
+                docker rm ${params.CONTAINER_NAME}
+                docker ps -a
+                """
+            }
+        }
+        
+        
+    }
+    
+    post {
+        cleanup {
+            /* clean up our workspace */
+            deleteDir()
+            /* clean up tmp directory */
+            dir("${workspace}@tmp") {
+                deleteDir()
+            }
+            /* clean up script directory */
+            dir("${workspace}@script") {
+                deleteDir()
+            }
+        }
+    }
+}

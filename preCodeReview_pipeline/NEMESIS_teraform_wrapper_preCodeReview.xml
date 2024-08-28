@@ -1,0 +1,203 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job will be triggered once there&apos;s a new commit/patch set for code review, for the terraform-wrapper-cli repo in gerrit.&#xd;
+&#xd;
+The job is cloning dockerfile and terraform-wrapper-cli repo and providing the following structure of the worskpace:&#xd;
+/workspace&#xd;
+/workspace/terraform-wrapper-cli&#xd;
+/workspace/Dockerfile&#xd;
+&#xd;
+The outcome is a tested(linters, unit tests, build and install) patch set on the built docker image &quot;terraform_cli_pre_cr&quot;.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>TAG</name>
+          <description></description>
+          <defaultValue>${BUILD_NUMBER}_${GERRIT_CHANGE_ID}</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.plugins.git.GitSCM" plugin="git@2.4.0">
+    <configVersion>2</configVersion>
+    <userRemoteConfigs>
+      <hudson.plugins.git.UserRemoteConfig>
+        <refspec>$GERRIT_REFSPEC</refspec>
+        <url>ssh://ehraole@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-wrapper-cli</url>
+        <credentialsId>9acd954d-122f-4fc4-aa87-ab9fa3d45186</credentialsId>
+      </hudson.plugins.git.UserRemoteConfig>
+    </userRemoteConfigs>
+    <branches>
+      <hudson.plugins.git.BranchSpec>
+        <name>$GERRIT_BRANCH</name>
+      </hudson.plugins.git.BranchSpec>
+    </branches>
+    <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+    <submoduleCfg class="list"/>
+    <extensions>
+      <hudson.plugins.git.extensions.impl.BuildChooserSetting>
+        <buildChooser class="com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.GerritTriggerBuildChooser" plugin="gerrit-trigger@2.17.2">
+          <separator>#</separator>
+        </buildChooser>
+      </hudson.plugins.git.extensions.impl.BuildChooserSetting>
+    </extensions>
+  </scm>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.GerritTrigger plugin="gerrit-trigger@2.17.2">
+      <spec></spec>
+      <gerritProjects>
+        <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritProject>
+          <compareType>PLAIN</compareType>
+          <pattern>ENMaaS/enm-public-cloud/terraform-wrapper-cli</pattern>
+          <branches>
+            <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.Branch>
+              <compareType>PLAIN</compareType>
+              <pattern>master</pattern>
+            </com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.Branch>
+          </branches>
+          <disableStrictForbiddenFileVerification>false</disableStrictForbiddenFileVerification>
+        </com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritProject>
+      </gerritProjects>
+      <skipVote>
+        <onSuccessful>false</onSuccessful>
+        <onFailed>false</onFailed>
+        <onUnstable>false</onUnstable>
+        <onNotBuilt>false</onNotBuilt>
+      </skipVote>
+      <gerritBuildSuccessfulVerifiedValue>1</gerritBuildSuccessfulVerifiedValue>
+      <gerritBuildFailedVerifiedValue>-1</gerritBuildFailedVerifiedValue>
+      <silentMode>false</silentMode>
+      <notificationLevel></notificationLevel>
+      <silentStartMode>false</silentStartMode>
+      <escapeQuotes>true</escapeQuotes>
+      <noNameAndEmailParameters>false</noNameAndEmailParameters>
+      <dependencyJobsNames></dependencyJobsNames>
+      <readableMessage>false</readableMessage>
+      <buildStartMessage></buildStartMessage>
+      <buildFailureMessage></buildFailureMessage>
+      <buildSuccessfulMessage></buildSuccessfulMessage>
+      <buildUnstableMessage></buildUnstableMessage>
+      <buildNotBuiltMessage></buildNotBuiltMessage>
+      <buildUnsuccessfulFilepath></buildUnsuccessfulFilepath>
+      <customUrl>$GERRIT_CHANGE_URL</customUrl>
+      <serverName>gerrit.ericsson.se</serverName>
+      <triggerOnEvents>
+        <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.events.PluginPatchsetCreatedEvent>
+          <excludeDrafts>false</excludeDrafts>
+          <excludeTrivialRebase>false</excludeTrivialRebase>
+          <excludeNoCodeChange>false</excludeNoCodeChange>
+        </com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.events.PluginPatchsetCreatedEvent>
+        <com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.events.PluginDraftPublishedEvent/>
+      </triggerOnEvents>
+      <dynamicTriggerConfiguration>false</dynamicTriggerConfiguration>
+      <triggerConfigURL></triggerConfigURL>
+      <triggerInformationAction/>
+    </com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.GerritTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &apos;### WRAP CONTENTS IN A FOLDER ###&apos;
+mkdir terraform-wrapper-cli
+mv `ls -A | grep -v &quot;terraform-wrapper-cli&quot;` terraform-wrapper-cli
+
+echo &apos;### LATEST COMMIT FOR REVIEW ###&apos;
+cd terraform-wrapper-cli/ &amp;&amp; git log --stat HEAD^..HEAD &amp;&amp; cd ..
+
+echo &apos;### CLONE RELATED DOCKER PROJECT ###&apos;
+git clone ssh://ehraole@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/docker/terraform-cli-pre-cr
+
+echo &apos;### RELOCATE DOCKERFILE ###&apos;
+cp terraform-cli-pre-cr/Dockerfile .
+
+echo &apos;### CLEANUP DOCKER PROJECT ###&apos;
+rm -rfv terraform-cli-pre-cr
+
+echo &quot;&quot;
+pwd
+ls
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>docker images
+
+echo &quot;&quot;
+echo &apos;### BUILD DOCKER IMAGE ###&apos;
+docker build -t terraform_cli_pre_cr:$TAG .
+
+docker images
+
+echo &quot;&quot;
+#echo &apos;### CLEANUP DOCKER IMAGES ###&apos;
+#docker image prune -f
+#docker rmi -f $(docker images | grep &quot;terraform_cli_pre_cr&quot; | awk &apos;{print $3}&apos;)
+
+#docker images</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.16">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>true</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

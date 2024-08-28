@@ -1,0 +1,66 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.8">
+  <actions/>
+  <description>This job is intended to re-generate the AWS ECR token automatically.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 7 * * *</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>token=$(aws ecr get-login --no-include-email)
+$token</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+</matrix-project>

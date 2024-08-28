@@ -1,0 +1,131 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job will use the terraform templates to destroy the cloud resources used for ENM installation.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>PHASE1_ENM_PROV_IMAGE</name>
+          <description>Where to pull phase1 provisioning image from, which has the modified input file, ready to call terraform destroy.</description>
+          <defaultValue>phase-1/enm-provisioning</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_PHASE1_RS_DESTROY_CONTAINER</name>
+          <description>Container used to call terraform_wrapper</description>
+          <defaultValue>destroy_resources_post_phase1_enm_install</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ECR_LINK</name>
+          <description></description>
+          <defaultValue>152254703525.dkr.ecr.eu-west-1.amazonaws.com</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;Pull the latest enm-provisioning image from AWS ECR.&quot;
+docker pull $ECR_LINK/$PHASE1_ENM_PROV_IMAGE
+echo &quot;&quot;
+
+echo &quot;Prepare container.&quot;
+ec=0
+docker ps -a | grep $ENM_PHASE1_RS_DESTROY_CONTAINER || ec=$?
+if [ $ec == 0 ]; then
+	if [ $(docker ps -a | grep $ENM_PHASE1_RS_DESTROY_CONTAINER | awk &apos;{print $7}&apos;) ==  &quot;Up&quot; ]; then
+    	echo &quot;The container $ENM_PHASE1_RS_DESTROY_CONTAINER is up.&quot;
+    else
+    	echo &quot;Starting the container $ENM_PHASE1_RS_DESTROY_CONTAINER&quot;
+    	docker start $ENM_PHASE1_RS_DESTROY_CONTAINER
+    fi
+else
+	echo &quot;Creating the container $ENM_PHASE1_RS_DESTROY_CONTAINER&quot;
+    docker run -it -d -v /home/jenkins-nemesis/.aws:/root/.aws \
+    --name $ENM_PHASE1_RS_DESTROY_CONTAINER $ECR_LINK/$PHASE1_ENM_PROV_IMAGE
+fi
+echo &quot;&quot;
+
+echo &quot;Show input file contents.&quot;
+docker exec $ENM_PHASE1_RS_DESTROY_CONTAINER cat input.json
+echo &quot;&quot;
+
+echo &quot;Destroy resources.&quot;
+docker exec $ENM_PHASE1_RS_DESTROY_CONTAINER terraform_wrapper --operation destroy --input_file input.json
+echo &quot;&quot;
+
+echo &quot;Stop and remove the container $ENM_PHASE1_RS_DESTROY_CONTAINER.&quot;
+docker stop $ENM_PHASE1_RS_DESTROY_CONTAINER &amp;&amp; docker rm $ENM_PHASE1_RS_DESTROY_CONTAINER
+echo &quot;&quot;
+
+echo &quot;Remove the $ECR_LINK/$PHASE1_ENM_PROV_IMAGE image.&quot;
+docker rmi -f $(docker images | grep $ECR_LINK/$PHASE1_ENM_PROV_IMAGE | awk &apos;{print $3}&apos;)
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

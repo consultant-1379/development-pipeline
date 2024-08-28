@@ -1,0 +1,135 @@
+pipeline {
+    agent any
+
+    environment{
+        BRANCH_NAME = "master"
+        SSH_USER = "jnkcinmaas"
+        DEPLOYMENT_TESTS_REPO_URL = "ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/deployment-tests.git"
+    }
+
+    parameters {
+        string(name: 'DEPLOY_CONTAINER_NAME', defaultValue: 'nemesis_pci_container_scheduled_$BUILD_NUMBER', description: 'Container spinned up for deployment')
+        string(name: 'DESTROY_CONTAINER_NAME', defaultValue: 'nemesis_pci_destroy_container_scheduled_$BUILD_NUMBER', description: 'Container spinned up for tf destroy')
+        string(name: 'PUBLIC_CLOUD_INTERFACE_IMAGE', defaultValue: 'armdocker.rnd.ericsson.se/proj-nmaas-pub/test/public-cloud-interface',
+               description: 'PCI Image for container')
+        string(name: 'EKS_CLUSTER', defaultValue: 'enm-production-jenkins-cluster', description: 'Name of the deployed EKS cluster')
+    }
+
+    stages{
+        stage('Gerrit Checkout') {
+            steps {
+                parallel(
+                    testcases: {
+                        echo '########Checking out Deployment Tests########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'deployment-tests']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[credentialsId: 'nemesis_functional_id', url: env.DEPLOYMENT_TESTS_REPO_URL]]])
+                    }
+                    )
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'DOCKER_LOGIN_CREDENTIALS', usernameVariable: 'ARM_USER', passwordVariable: 'ARM_PASS']]) {
+                    sh "docker login armdocker.rnd.ericsson.se --username $ARM_USER --password $ARM_PASS"
+                }
+            }
+        }
+
+        stage('Provision AWS Resources') {
+            steps {
+                sh """
+                docker pull ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}
+                docker run -d -it --name ${params.DEPLOY_CONTAINER_NAME} ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}
+                docker exec ${params.DEPLOY_CONTAINER_NAME} terraform_wrapper --operation all --input_file input.json
+                """
+            }
+        }
+
+        stage('EKS Integration') {
+            steps {
+                sh """
+                docker exec ${params.DEPLOY_CONTAINER_NAME} ansible-playbook /root/integration/enm/enm_aws_integration.yaml -i /root/integration/enm/inventories/production/hosts
+                """
+            }
+        }
+
+        stage('Deployment Test Suite') {
+            steps {
+                sh """
+                docker cp deployment-tests/ ${params.DEPLOY_CONTAINER_NAME}:/root
+                docker exec -w /root/deployment-tests ${params.DEPLOY_CONTAINER_NAME} pip3 install -e .
+                docker exec -w /root/deployment-tests ${params.DEPLOY_CONTAINER_NAME} bash -c \'mkdir output && PYTHONPATH=. robot --outputdir output --loglevel INFO tests\' || true
+                mkdir -p /home/jenkins-nemesis/robotresults/$BUILD_NUMBER
+                docker cp ${params.DEPLOY_CONTAINER_NAME}:/root/deployment-tests/output /home/jenkins-nemesis/robotresults/$BUILD_NUMBER
+                """
+            }
+        }
+
+        stage('Destroy AWS Resources') {
+            steps {
+                sh """
+                docker run -d -it --name ${params.DESTROY_CONTAINER_NAME} ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}
+                docker exec ${params.DESTROY_CONTAINER_NAME} terraform_wrapper --operation destroy --input_file input.json
+                """
+            }
+        }
+
+        stage('Container cleanup') {
+            steps {
+                sh """
+                docker ps -a
+                docker stop ${params.DEPLOY_CONTAINER_NAME} ${params.DESTROY_CONTAINER_NAME}
+                docker rm ${params.DEPLOY_CONTAINER_NAME} ${params.DESTROY_CONTAINER_NAME}
+                docker ps -a
+                """
+            }
+        }
+
+        stage('Publish Test results') {
+            steps {
+                step([
+                $class : 'RobotPublisher',
+                outputPath : '/home/jenkins-nemesis/robotresults/${BUILD_NUMBER}/output',
+                outputFileName : "*.xml",
+                disableArchiveOutput : false,
+                passThreshold : 100,
+                unstableThreshold: 50.0,
+                otherFiles : "*/selenium-screenshot.png,*/report-.csv",
+            ])
+            }
+        }
+    }
+
+    post {
+        cleanup {
+            /* clean up our workspace */
+            deleteDir()
+            /* clean up tmp directory */
+            dir("${workspace}@tmp") {
+                deleteDir()
+            }
+            /* clean up script directory */
+            dir("${workspace}@script") {
+                deleteDir()
+            }
+        }
+        success {
+            emailext body: '''$DEFAULT_CONTENT
+            $SUCCESS_STATUS''',
+            to: 'PDLNEMESIS@pdl.internal.ericsson.com',
+            subject: '$DEFAULT_SUBJECT'
+        }
+        failure {
+            emailext body: '''$DEFAULT_CONTENT
+            $FAILURE_STATUS
+            $HTML_LOG_SCRIPT''',
+            to: 'PDLNEMESIS@pdl.internal.ericsson.com',
+            subject: '$DEFAULT_SUBJECT'
+        }
+    }
+}

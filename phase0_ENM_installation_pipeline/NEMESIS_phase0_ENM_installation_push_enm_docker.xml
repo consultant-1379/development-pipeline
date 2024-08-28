@@ -1,0 +1,444 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>Job responsible for creating ECR repositories for ENM docker images on AWS, building and pushing them to AWS. &lt;br/&gt;&#xd;
+&lt;br/&gt;&#xd;
+The following steps are executed:&lt;br/&gt;&#xd;
+&lt;br/&gt;&#xd;
+1. Clone git repository with ENM docker files.&lt;br/&gt;&#xd;
+2. Create docker registry on AWS-ECR for each docker image.&lt;br/&gt;&#xd;
+3. Replace YUM repo of base docker image to point to the right AWS S3 bucket with the proper packages dependencies.&lt;br/&gt;&#xd;
+4. Update Docker files of remaining ENM artifacts to point to a base image on AWS&lt;br/&gt;&#xd;
+5. Build images, starting from the base image&lt;br/&gt;&#xd;
+6. Push images to AWS&lt;br/&gt;&#xd;
+7. Clean up&lt;br/&gt;&#xd;
+</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+
+# Containerisation git repo
+GIT_USER=&quot;${1:-ehraole}&quot;
+GIT_ENM_CONTAINERISATION_REPO=&quot;ssh://${GIT_USER}@gerrit.ericsson.se:29418/OSS/com.ericsson.oss.containerisation/ENM-containerisation-POC&quot;
+
+# Phase-0 ENM docker path
+PROJECT_PATH=&quot;./ENM-containerisation-POC&quot;
+ENM_PHASE0_PATH=&quot;${PROJECT_PATH}/phase-0&quot;
+
+# Base docker image data for ENM
+RHELBASE_IMAGE_NAME=&quot;eric-enm-rhel6base&quot;
+RHELJBOSS_IMAGE_NAME=&quot;eric-enm-rhel6jboss&quot;
+
+RHELBASE_IMAGE_CONTENT_PATH=&quot;${ENM_PHASE0_PATH}/${RHELBASE_IMAGE_NAME}/image_content&quot;
+RHELBASE_DOCKERIMAGE_PATH=&quot;${ENM_PHASE0_PATH}/${RHELBASE_IMAGE_NAME}&quot;
+RHELBASE_YUM_REPO_PATH=&quot;${RHELBASE_IMAGE_CONTENT_PATH}/yum.repos.d&quot;
+
+# Opendj file path to be modified
+OPENDJ_CONFIG_FILEPATH=&quot;${ENM_PHASE0_PATH}/eric-enmsg-opendj/image_content/opendj_config.sh&quot;
+
+# Map of rpm files used by Dockerfiles to be downloaded manually
+# Note: Do not specify the version of the package in the url.
+declare -A MANUAL_DEP_MAP=( [&quot;EXTRlitprsyslogelasticsearch_CXP9032173&quot;]=&quot;https://arm101-eiffel004.lmera.ericsson.se:8443/nexus/content/repositories/litp_releases/com/ericsson/nms/litp/3pps/EXTRlitprsyslogelasticsearch_CXP9032173&quot; )
+
+# Base docker image repo addresses
+STATIC_REPO_ERIC_ADDRESS=&quot;cifwk-oss.lmera.ericsson.se\/static\/staticRepos&quot;
+AWS_PKG_REPO_ADDRESS=&quot;s3-eu-west-1.amazonaws.com\/phase0-enm-installation-isos&quot;
+
+# Docker registry addresses
+ERIC_ADDRESS=&quot;armdocker.rnd.ericsson.se\/proj_oss_releases&quot;
+AWS_ADDRESS=&quot;152254703525.dkr.ecr.eu-west-1.amazonaws.com&quot;
+
+# Docker image tags
+IMAGE_TAG=&quot;${BUILD_ID}&quot;
+
+function log_info() {
+    echo &quot;[INFO] $1&quot;
+}
+
+function log_error() {
+    echo &quot;[ERROR] $1&quot;
+}
+
+function log_warn() {
+    echo &quot;[WARN] $1&quot;
+}
+
+function print_sep() {
+    log_info &quot;====================================================================&quot;
+}
+
+function clone_git_repo() {
+    local git_url=&quot;$1&quot;
+
+    log_info &quot;Remove old version of git project&quot;
+    rm -rf $PROJECT_PATH
+
+    log_info &quot;Clone new version of git project&quot;
+
+    git clone ${git_url}
+    local status=$?
+    if [[ ${status} -eq 0 ]]; then
+        log_info &quot;Git repositorty &apos;${git_url}&apos; was cloned successfully&quot;
+    else
+        log_error &quot;Could not clone git project &apos;${PROJECT_PATH}&apos;&quot;
+    fi
+
+    return ${status}
+}
+
+function create_ecr_repo() {
+    local repo_name=&quot;enm/$1&quot;
+    local log_msg_prefix=&quot;ECR repository &apos;${repo_name}&apos;&quot;
+
+    log_info &quot;Look ${repo_name} up in AWS&quot;
+    aws ecr describe-repositories --repository-names ${repo_name}
+    if [[ $? -eq 0 ]]; then
+        log_info &quot;ECR repostiory ${repo_name} already exists!&quot;
+        return 0
+    fi
+
+    log_info &quot;${log_msg_prefix} does not exist yet, create a new one&quot;
+
+    aws ecr create-repository --repository-name ${repo_name}
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;${log_msg_prefix} could not be created&quot;
+        return ${status}
+    fi
+
+    json_policy=&quot;{\&quot;rules\&quot;:[{\&quot;action\&quot;:{\&quot;type\&quot;:\&quot;expire\&quot;},\&quot;selection\&quot;:{
+    \&quot;countType\&quot;:\&quot;imageCountMoreThan\&quot;,\&quot;countNumber\&quot;:5,\&quot;tagStatus\&quot;:\&quot;any\&quot;},
+    \&quot;description\&quot;:\&quot;Keep the latest + 4 images on repository.\&quot;,\&quot;rulePriority\&quot;:1}]}&quot;
+    aws ecr put-lifecycle-policy --repository-name &quot;${repo_name}&quot; --lifecycle-policy-text &quot;$json_policy&quot;
+
+    log_info &quot;${log_msg_prefix} was created successfully&quot;
+
+    return ${status}
+}
+
+function replace_on_file() {
+    local dir_path=&quot;$1&quot;
+    local file_name=&quot;$2&quot;
+    local old_str=&quot;$3&quot;
+    local new_str=&quot;$4&quot;
+
+    if [[ ! -d ${dir_path} ]]; then
+        log_error &quot;Expected a directory path &apos;${dir_path}&apos;&quot;
+        return 1
+    fi
+
+    find ${dir_path} -type f -name ${file_name} -not -path &quot;*/todo/*&quot; -exec sed -i &quot;s/${old_str}/${new_str}/g&quot; {} \;
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Error while replacing string on file ${file_name} (old-string=${old_str}|new-string=${new_str})&quot;
+    fi
+
+    return ${status}
+}
+
+function find_first_match_line() {
+    local file_path=&quot;$1&quot;
+    local search_str=&quot;$2&quot;
+
+    if [[ ! -f &quot;${file_path}&quot; ]]; then
+        log_error &quot;File &apos;${file_path}&apos; does not exist&quot;
+        return 1
+    fi
+
+    log_info &quot;Look for ${search_str} in file ${file_path}&quot;
+
+    reference_line=$(grep -n &quot;${search_str}&quot; &quot;${file_path}&quot; -m 1)
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_warn &quot;Could not find string &apos;${search_str}&apos; in file &apos;${file_path}&apos;&quot;
+        return ${status}
+    fi
+
+    line_number=$(echo &quot;${reference_line}&quot; | sed -r &apos;s/:.+//g&apos;)
+
+    return 0
+}
+
+function append_in_line() {
+    local line=&quot;$1&quot;
+    local text=&quot;$2&quot;
+    local file_path=&quot;$3&quot;
+
+    if [[ ! -f &quot;${file_path}&quot; ]]; then
+        log_error &quot;File &apos;${file_path}&apos; does not exist&quot;
+        return 1
+    fi
+
+    log_info &quot;Add string &apos;${text}&apos; in line ${line} of file &apos;${file_path}&apos;&quot;
+
+    sed -i &quot;${line} i\ ${text}&quot; &quot;${file_path}&quot;
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Could not add text to file &apos;${file_path}&apos; in line ${line}&quot;
+    fi
+
+    return ${status}
+}
+
+function downaload_file() {
+    local destination_path=&quot;$1&quot;
+    local url=&quot;$2&quot;
+    local file_name=&quot;$3&quot;
+
+    if [[ ! -d &quot;${destination_path}&quot; ]]; then
+        log_error &quot;Invalid destination folder &apos;${destination_path}&apos;&quot;
+        return 1
+    fi
+
+    if [[ ! -f &quot;${destination_path}/${file_name}&quot; ]]; then
+        local full_url=&quot;${url}/${file_name}&quot;
+
+        wget -P ${destination_path} ${full_url}
+        local status=$?
+        if [[ ! ${status} -eq 0 ]]; then
+            log_error &quot;Could not download file &apos;${full_url}&apos;&quot;
+            return ${status}
+        fi
+    fi
+
+    log_info &quot;File &apos;${destination_path}/${file_name}&apos; downloaded&quot;
+
+    return 0
+}
+
+function inject_manual_dep_docker() {
+    # Modify Dockerfile to refer to a local package instead of remote repo as follows:
+    # 1. Download desired package to image_content folder
+    # 2. Modify Dockerfile statements to copy the package to /var/tmp inside the docker image
+    # 3. Modify package instalation statement to use the rpm from /var/tmp
+    # Note: Packages should be mapped in MANUAL_DEP_MAP to get the URL
+    local docker_image_path=&quot;$1&quot;
+    local dependency_name=&quot;$2&quot;
+    local dependency_version=&quot;$3&quot;
+
+    local dockerfile_path=&quot;${docker_image_path}/Dockerfile&quot;
+
+    if [[ ! -f &quot;${dockerfile_path}&quot; ]]; then
+        log_error &quot;Dockerfile not found in &apos;${docker_image_path}&apos;&quot;
+        return 1
+    fi
+
+    local pkg_url=&quot;${MANUAL_DEP_MAP[${dependency_name}]}&quot;
+    if [[ ${pkg_url} == &quot;&quot; ]]; then
+        log_error &quot;Package &apos;${dependency_name}&apos; not found. Known dependencies are [${!MANUAL_DEP_MAP[@]}]&quot;
+        return 1
+    fi
+
+    local rpm_file=&quot;${dependency_name}-${dependency_version}.rpm&quot;
+
+    downaload_file &quot;${docker_image_path}/image_content&quot; &quot;${pkg_url}/${dependency_version}&quot; ${rpm_file}
+    if [[ ! $? -eq 0 ]]; then
+        return $?
+    fi
+
+    # Refrain from replacing over again if the rpm file reference was already added
+    find_first_match_line &quot;${dockerfile_path}&quot; &quot;${rpm_file}&quot;
+    if [[ $? -eq 0 ]]; then
+        return 0
+    fi
+
+    replace_on_file ${docker_image_path} &quot;Dockerfile&quot; ${dependency_name} &quot;\/var\/tmp\/${rpm_file}&quot;
+
+    find_first_match_line &quot;${dockerfile_path}&quot; &quot;COPY&quot;
+    if [[ ! $? -eq 0 ]]; then
+        return $?
+    fi
+
+    line_number=$(( line_number + 2 ))
+    append_in_line ${line_number} &quot;COPY image_content/${rpm_file} /var/tmp/&quot; ${dockerfile_path}
+
+    return $?
+}
+
+function check_status_exit() {
+    local status=&quot;$1&quot;
+
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Exit with error code (${status})&quot;
+        exit ${status}
+    fi
+}
+
+log_info &quot;### STEP 1. CLONE ENM GIT REPO LOCALLY ###&quot;
+clone_git_repo &quot;$GIT_ENM_CONTAINERISATION_REPO&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 2. GET THE LIST OF DOCKERFILES TO BE PROCESSED BY THE SCRIPT ###&quot;
+RHEL_IMAGE_LIST=&quot;${RHELBASE_IMAGE_NAME} ${RHELJBOSS_IMAGE_NAME}&quot;
+
+# TODO Check if eric-nfs-client-provisioner should be a docker image, since it does not have Dockerfile
+IMAGES_TO_IGNORE=&apos;todo|eric-nfs-client-provisioner&apos;
+for docker_name in ${RHEL_IMAGE_LIST}; do
+    IMAGES_TO_IGNORE=&quot;${IMAGES_TO_IGNORE}|${docker_name}&quot;
+done
+DOCKERFILE_LIST=$(ls ${ENM_PHASE0_PATH} | grep eric | grep -E -v ${IMAGES_TO_IGNORE})
+PROCESSED_DOCKER_IMAGES=&quot;${RHEL_IMAGE_LIST} ${DOCKERFILE_LIST}&quot;
+
+log_info &quot;### STEP 3. CREATE ECR REPOS ON AWS ###&quot;
+for docker_name in ${PROCESSED_DOCKER_IMAGES}; do
+    create_ecr_repo ${docker_name}
+    check_status_exit $?
+done
+
+log_info &quot;### STEP 4. MODIFY ENM AND RHEL REPO ADDRESSES TO POINT TO AWS ###&quot;
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;cifwk_enm.repo&quot; ${STATIC_REPO_ERIC_ADDRESS} ${AWS_PKG_REPO_ADDRESS}
+check_status_exit $?
+
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;rhel.repo&quot; &quot;${STATIC_REPO_ERIC_ADDRESS}\/RHEL6.10_OS_Patch_Set&quot; &quot;${AWS_PKG_REPO_ADDRESS}\/RHEL\/RHEL6-2.1.2&quot;
+check_status_exit $?
+
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;*.repo&quot; &quot;\/latest&quot; &quot;&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 5. INJECT MANUALLY DOWNLOADED DEPENDENCIES TO RHEL BASE DOCKERFILE ###&quot;
+inject_manual_dep_docker ${RHELBASE_DOCKERIMAGE_PATH} &quot;EXTRlitprsyslogelasticsearch_CXP9032173&quot; &quot;1.1.5&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 6. CHANGE DOCKERFILES URLS TO AWS ###&quot;
+replace_on_file ${ENM_PHASE0_PATH} &quot;Dockerfile&quot; ${ERIC_ADDRESS} ${AWS_ADDRESS}
+check_status_exit $?
+
+# TODO Remove this once eric-enm-neo4j-extension-plugin dockerfile is fixed
+replace_on_file &quot;${ENM_PHASE0_PATH}/eric-enm-neo4j-extension-plugin&quot; &quot;Dockerfile&quot; &quot;1.30.3&quot; &quot;1.37.1&quot;
+check_status_exit $?
+
+# TODO Remove this once eric-enmsg-neo4j dockerfile is fixed
+replace_on_file &quot;${ENM_PHASE0_PATH}/eric-enmsg-neo4j&quot; &quot;Dockerfile&quot; &quot;COPY postgres_key.pem&quot; &quot;COPY image_content\/postgres_key.pem&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 7. MODIFY OPENDJ_CONFIG FILE ###&quot;
+REMOVE_CMD=&quot;rm -rf /etc/security/limits.d/opendj_custom.conf&quot;
+find_first_match_line &quot;${OPENDJ_CONFIG_FILEPATH}&quot; &quot;${REMOVE_CMD}&quot;
+
+if [[ ! $? -eq 0 ]]; then
+    log_info &quot;Add command &apos;${REMOVE_CMD}&apos; to file &apos;${OPENDJ_CONFIG_FILEPATH}&apos;&quot;
+
+    find_first_match_line &quot;${OPENDJ_CONFIG_FILEPATH}&quot; &quot;#aws fixes&quot;
+    check_status_exit $?
+
+    line_number=$(( line_number + 2 ))
+    append_in_line ${line_number} &quot;${REMOVE_CMD}&quot; ${OPENDJ_CONFIG_FILEPATH}
+    check_status_exit $?
+fi
+
+log_info &quot;### STEP 8. BUILD AND PUSH RHEL IMAGES ###&quot;
+
+for docker_name in ${RHEL_IMAGE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Build docker image ${full_image_name}&quot;
+    docker build -t &quot;${tagged_image}&quot; &quot;${ENM_PHASE0_PATH}/${docker_name}/.&quot; || check_status_exit $?
+    docker tag &quot;${tagged_image}&quot; &quot;${latest_image}&quot;
+
+    log_info &quot;Push docker image ${tagged_image}&quot;
+    docker push &quot;${tagged_image}&quot; || check_status_exit $?
+    docker push &quot;${latest_image}&quot; || check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;### STEP 9 BUILD REMAINING IMAGES ###&quot;
+for docker_name in ${DOCKERFILE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Build docker image ${full_image_name}&quot;
+    docker build -t &quot;${tagged_image}&quot; &quot;${ENM_PHASE0_PATH}/${docker_name}/.&quot; || check_status_exit $?
+    docker tag &quot;${tagged_image}&quot; &quot;${latest_image}&quot;
+    print_sep
+done
+
+log_info &quot;### STEP 10 PUSH REMAINING IMAGES ###&quot;
+for docker_name in ${DOCKERFILE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Push docker image ${tagged_image}&quot;
+    docker push &quot;${tagged_image}&quot; || check_status_exit $?
+    docker push &quot;${latest_image}&quot; || check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;### STEP 11. CLEAN UP BUILD_ID TAGGED DOCKER IMAGES ###&quot;
+for docker_name in ${PROCESSED_DOCKER_IMAGES}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+
+    log_info &quot;Clean up docker image ${tagged_image}&quot;
+    docker rmi &quot;${tagged_image}&quot;
+    check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;Script has finished successfully&quot;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

@@ -1,0 +1,175 @@
+pipeline {
+    agent any
+
+    environment{
+        BRANCH_NAME = "master"
+        SSH_USER = "jnkcinmaas"
+        CLIENT_MACHINE_PROVISIONING_REPO_URL = "ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/client-machine-provisioning"
+        TERRAFORM_WRAPPER_CLI_REPO_URL = "ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-wrapper-cli"
+        TERRAFORM_TEMPLATES_REPO_URL = "ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-templates"
+    }
+
+    parameters {
+        string(name: 'DEPLOY_CONTAINER_NAME', defaultValue: 'nemesis_pci_container_$BUILD_NUMBER', description: 'Container spinned up for deployment')
+        string(name: 'DESTROY_CONTAINER_NAME', defaultValue: 'nemesis_pci_destroy_container_$BUILD_NUMBER', description: 'Container spinned up for tf destroy')
+        string(name: 'TAG', defaultValue: '1.0.$BUILD_NUMBER', description: 'Version Tag for the PCI docker image')
+        string(name: 'PUBLIC_CLOUD_INTERFACE_IMAGE', defaultValue: 'armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface',
+               description: 'PCI Image for container')
+        string(name: 'EKS_CLUSTER', defaultValue: 'enm-production-jenkins-cluster', description: 'Name of the deployed EKS cluster')
+    }
+
+    stages{
+        stage('Gerrit Checkout') {
+            steps {
+                parallel(
+                    ansible: {
+                        echo '########Checking out Ansible playbook project########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'client-machine-provisioning']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[credentialsId: 'nemesis_functional_id', url: env.CLIENT_MACHINE_PROVISIONING_REPO_URL]]])
+                    },
+                    wrapper: {
+                        echo '########Checking out Terraform wrapper CLI########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'terraform-wrapper-cli']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[credentialsId: 'nemesis_functional_id', url: env.TERRAFORM_WRAPPER_CLI_REPO_URL]]])
+                    },
+                    templates: {
+                        echo '########Checking out Terraform templates########'
+                        checkout([$class: 'GitSCM',
+                                branches: [[name: env.BRANCH_NAME]],
+                                doGenerateSubmoduleConfigurations: false,
+                                extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'terraform-templates']],
+                                submoduleCfg: [],
+                                userRemoteConfigs: [[credentialsId: 'nemesis_functional_id', url: env.TERRAFORM_TEMPLATES_REPO_URL]]])
+                    }
+                    )
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'DOCKER_LOGIN_CREDENTIALS', usernameVariable: 'ARM_USER', passwordVariable: 'ARM_PASS']]) {
+                    sh "docker login armdocker.rnd.ericsson.se --username $ARM_USER --password $ARM_PASS"
+                }
+            }
+        }
+
+        stage('Build PCI Image') {
+            steps {
+                sh """
+                mkdir input
+                cp /home/jenkins-nemesis/input/input.json input
+                mv terraform-wrapper-cli/Dockerfile .
+                docker build -t ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:${params.TAG} .
+                """
+            }
+        }
+
+        stage('Provision Cloud Resources') {
+            steps {
+                sh """
+                docker run -d -it --name ${params.DEPLOY_CONTAINER_NAME} ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:${params.TAG}
+                docker exec ${params.DEPLOY_CONTAINER_NAME} terraform_wrapper --operation all --input_file input.json
+                """
+            }
+        }
+
+        stage('EKS Integration') {
+            steps {
+                sh """
+                docker exec ${params.DEPLOY_CONTAINER_NAME} ansible-playbook /root/integration/enm/enm_aws_integration.yaml -i /root/integration/enm/inventories/production/hosts
+                """
+            }
+        }
+
+        stage('Destroy Cloud Resources') {
+            steps {
+                sh """
+                docker run -d -it --name ${params.DESTROY_CONTAINER_NAME} ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:${params.TAG}
+                docker exec ${params.DESTROY_CONTAINER_NAME} terraform_wrapper --operation destroy --input_file input.json
+                """
+            }
+        }
+
+        stage('Push PCI Image to Repo') {
+            steps {
+                sh """
+                docker tag ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:${params.TAG} \
+                ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:latest
+                docker push ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:${params.TAG}
+                docker push ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}:latest
+                """
+            }
+        }
+
+        stage('Tagging Git Repos') {
+            steps {
+                echo "### Tag terraform-templates and terraform-wrapper-cli. ###"
+                sh """
+                cd terraform-templates
+                git config user.name \"jenkins_nemesis\"
+                git config user.email \"PDLNEMESIS@pdl.internal.ericsson.com\"
+                git tag -am \"Add ${params.TAG} tag\" ${params.TAG}
+                git push origin ${params.TAG}
+                """
+                echo "### Tagged TERRAFORM TEMPLATES ###"
+
+                sh """
+                cd terraform-wrapper-cli
+                git config user.name \"jenkins_nemesis\"
+                git config user.email \"PDLNEMESIS@pdl.internal.ericsson.com\"
+                git tag -am \"Add ${params.TAG} tag\" ${params.TAG}
+                git push origin ${params.TAG}
+                """
+                echo "### Tagged TERRAFROM WRAPPER ###"
+            }
+        }
+
+        stage('Container cleanup') {
+            steps {
+                sh """
+                docker ps -a
+                docker stop ${params.DEPLOY_CONTAINER_NAME} ${params.DESTROY_CONTAINER_NAME}
+                docker rm ${params.DEPLOY_CONTAINER_NAME} ${params.DESTROY_CONTAINER_NAME}
+                docker ps -a
+                """
+            }
+        }
+    }
+
+    post {
+        cleanup {
+            /* clean up our workspace */
+            deleteDir()
+            /* clean up tmp directory */
+            dir("${workspace}@tmp") {
+                deleteDir()
+            }
+            /* clean up script directory */
+            dir("${workspace}@script") {
+                deleteDir()
+            }
+        }
+        success {
+            emailext body: '''$DEFAULT_CONTENT
+            $SUCCESS_STATUS
+            <h3><span style="background-color: #ffff00; color: #000000;">PCI Image Version:&nbsp;$TAG</span></h3>''',
+            to: 'PDLNEMESIS@pdl.internal.ericsson.com',
+            subject: '$DEFAULT_SUBJECT'
+        }
+        failure {
+            emailext body: '''$DEFAULT_CONTENT
+            $FAILURE_STATUS
+            $HTML_LOG_SCRIPT''',
+            to: 'PDLNEMESIS@pdl.internal.ericsson.com',
+            subject: '$DEFAULT_SUBJECT'
+        }
+    }
+}

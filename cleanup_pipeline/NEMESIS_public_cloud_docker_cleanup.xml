@@ -1,0 +1,107 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>NODE</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs>NEMESIS_*</blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>1 1  * * 0-7
+</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+#declare -a imageNames=(&quot;ammarov&quot; &quot;none&quot; &quot;terraform_cli_pre_cr&quot; &quot;debian&quot; &quot;centos&quot; &quot;armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface&quot; &quot;armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning&quot;)
+declare -a imageNames=`docker images | awk &apos;NR &gt; 1 { print $1}&apos; | uniq`
+
+#Variables to use in docker clean up
+echo &quot;## Step 1 - Delete containers with the status exited and dangling &quot;
+docker rm $(docker ps -a | grep &quot;Exited&quot; | awk &apos;{print $1}&apos;)
+docker rmi $(docker images -qa  --filter &quot;dangling=true&quot;)
+
+
+echo &quot;## Step 2 - Check images tags  and delete&quot;
+# Loop over the image names
+for each in $imageNames;
+	# take the tag names and sort by number and remove the lastest and the last 3 images 
+    do tags=`docker images | grep &quot;$each&quot; | grep -v latest | awk &apos;NR &gt; 1 {print $2}&apos;| sort -n | head -n -3`;
+    docker images | grep &quot;$each&quot; | grep -v latest | awk &apos;NR &gt; 1 {print $2}&apos;| sort -n | head -n -3;
+    
+    for i in $tags;
+    	  #Loop over the tag names and remnove the older images
+          do echo $each:$i &amp;&amp; docker rmi $(docker images -qa --filter reference=$each:$i);
+    done
+
+done
+
+
+echo &quot;## Clean up fineshed&quot;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

@@ -1,0 +1,255 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>Phase 0 - RPM Repository for ENM and RHEL Patches rpm packages.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+1 - Download RHEL and ENM ISOs.&#xd;
+&lt;br&gt;&#xd;
+2 - Mount the ISOs to send the content (rpm packages) to S3 Bucket.&#xd;
+&lt;br&gt;&#xd;
+3 - Remove, if existent, old repodata information from ENM folder on S3 Bucket.&#xd;
+&lt;br&gt;&#xd;
+4 - Create ENM repodata information and send to S3 Bucket.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>1</daysToKeep>
+        <numToKeep>1</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.TextParameterDefinition>
+          <name>DOCKERFILE</name>
+          <description></description>
+          <defaultValue>FROM debian\n
+\n
+RUN apt update &amp;&amp; apt install -y createrepo python3-pip wget &amp;&amp; pip3 install awscli --upgrade &amp;&amp; mkdir -p /mnt/iso /enm_repodata &amp;&amp; rm -rf /var/cache/apt/ ~/.cache/pip</defaultValue>
+        </hudson.model.TextParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_ISO_NUMBER</name>
+          <description></description>
+          <defaultValue>CXP9027091</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>RHEL_PATCHES_ISO_NUMBER</name>
+          <description></description>
+          <defaultValue>CXP9034997</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;Prepare environment&quot;
+S3_BUCKET_NAME=phase0-enm-installation-isos
+JOB_DIR=prepare_rpm_repo_${BUILD_NUMBER}
+MOUNT_ISO_FOLDER=/mnt/iso/
+ENM_REPODATA=/enm_repodata
+
+# Folder for storaging the ISOs files and auxiliar files (json output / python script)
+mkdir -p $JOB_DIR
+cd $JOB_DIR
+
+echo &quot;Get latest ENM drop&quot;
+# get version of the product set from rest call
+PRODUCT_SET=$(wget -q -O - --no-check-certificate &quot;https://cifwk-oss.lmera.ericsson.se/getLastGoodProductSetVersion/?productSet=ENM&quot;)
+PRODUCT_DROP=${PRODUCT_SET:0:5}
+
+echo &quot;Get artifacts from drop&quot;
+curl https://cifwk-oss.lmera.ericsson.se/api/getProductSetDropData/productSet/ENM/drop/$PRODUCT_DROP/?format=json -o output.json
+
+echo &quot;Prepare python script to process json result&quot;
+echo -e &quot;&quot;&quot;#!/usr/bin/python
+import json
+import os
+import sys
+
+def main(json_values, enm_artifact_number, rhel_artifact_number):
+    json_dict = dict(json_values)
+    product_set_list = json_dict.get(\&quot;productset_drop_data\&quot;)
+
+    contents = []
+
+    for product_set in product_set_list:
+        if product_set.get(\&quot;status\&quot;) == \&quot;passed\&quot;:
+            contents = product_set.get(\&quot;contents\&quot;)
+            break
+
+    enm_url = \&quot;\&quot;
+    rhel_patches_url = \&quot;\&quot;
+
+    for content in contents:
+        if enm_artifact_number == content.get(\&quot;artifactNumber\&quot;):
+            enm_url = content.get(\&quot;hubUrl\&quot;)
+
+        if rhel_artifact_number == content.get(\&quot;artifactNumber\&quot;):
+            rhel_patches_url = content.get(\&quot;hubUrl\&quot;)
+
+        if enm_url.strip() and rhel_patches_url.strip():
+            enm_list = enm_url.split(\&quot;/\&quot;)
+            index = len(enm_list) - 1
+            enm_iso_name = enm_list[index]
+
+            rhel_list = rhel_patches_url.split(\&quot;/\&quot;)
+            index = len(rhel_list) - 1
+            rhel_patches_name = rhel_list[index]
+
+            print(enm_url)
+            print(rhel_patches_url)
+            print(enm_iso_name.strip(\&quot;/\&quot;))
+            print(rhel_patches_name.strip(\&quot;/\&quot;))
+
+            return True
+
+    return False
+
+if __name__ == \&quot;__main__\&quot;:
+    try:
+        json_filename = sys.argv[1]
+        enm_art_number = sys.argv[2]
+        rhel_art_number = sys.argv[3]
+
+        json_file = open(json_filename, \&quot;r+\&quot;)
+        json_vls = json.load(json_file)
+        is_success = main(json_vls, enm_art_number, rhel_art_number)
+    except Exception:
+        is_success = False
+
+    if not is_success:
+        print(\&quot;Error.\&quot;)
+
+    sys.exit()
+
+&quot;&quot;&quot; &gt; parser.py
+
+chmod -X parser.py
+
+echo &quot;Get the ENM and RHEL patches names and URLs from output.json&quot;
+PARSED_VALUES=$(python parser.py output.json $ENM_ISO_NUMBER $RHEL_PATCHES_ISO_NUMBER)
+
+set -- $PARSED_VALUES
+
+if [ $(echo $1) = &quot;Error.&quot; ]; then
+    echo &quot;Cannot get ENM and RHEL artifacts information from last drop.&quot;
+    exit 1
+fi
+
+URL_LIST=$(echo $1 $2)
+ENM_ISO_FILENAME=$3
+RHEL_PATCH_FILENAME=$4
+
+echo &quot;Downloading ENM and RHEL Patches&quot;
+echo $URL_LIST | xargs -n 1 -P 8 wget -nv
+if [ $(echo $?) != &quot;0&quot; ]; then
+    echo &quot;Cannot get ENM and RHEL artifacts from Hub.&quot;
+    exit 1
+fi
+
+echo &quot;Building docker image for RHEL&quot;
+CONTAINER_NAME=repo_container
+
+mkdir -p docker
+echo -e $DOCKERFILE &gt; docker/Dockerfile
+
+docker build -t edosadh ./docker/
+
+docker run --privileged -t -d --rm -v /home/jenkins-nemesis/.aws:/root/.aws --name $CONTAINER_NAME edosadh
+
+echo &quot;Mounting $RHEL_PATCH_FILENAME to $MOUNT_ISO_FOLDER folder and sync packages to S3&quot;
+docker cp ./$RHEL_PATCH_FILENAME repo_container:./
+docker exec $CONTAINER_NAME mount -o loop,ro $RHEL_PATCH_FILENAME $MOUNT_ISO_FOLDER
+docker exec $CONTAINER_NAME aws s3 sync $MOUNT_ISO_FOLDER s3://$S3_BUCKET_NAME
+
+echo &quot;Umounting $RHEL_PATCH_FILENAME from $MOUNT_ISO_FOLDER&quot;
+docker exec $CONTAINER_NAME umount $MOUNT_ISO_FOLDER
+docker exec $CONTAINER_NAME rm -f $RHEL_PATCH_FILENAME
+
+echo &quot;Mounting $ENM_ISO_FILENAME to $MOUNT_ISO_FOLDER folder and sync packages to S3&quot;
+docker cp ./$ENM_ISO_FILENAME repo_container:./
+docker exec $CONTAINER_NAME mount -o loop,ro $ENM_ISO_FILENAME $MOUNT_ISO_FOLDER
+docker exec $CONTAINER_NAME aws s3 sync $MOUNT_ISO_FOLDER s3://$S3_BUCKET_NAME/ENM
+
+echo &quot;Creating repodata info for ENM packages and sync to S3&quot;
+docker exec $CONTAINER_NAME createrepo --outputdir=$ENM_REPODATA $MOUNT_ISO_FOLDER
+docker exec $CONTAINER_NAME aws s3 rm s3://$S3_BUCKET_NAME/ENM/repodata --recursive
+docker exec $CONTAINER_NAME aws s3 sync $ENM_REPODATA s3://$S3_BUCKET_NAME/ENM
+
+echo &quot;Umounting $ENM_ISO_FILENAME from $MOUNT_ISO_FOLDER&quot;
+docker exec $CONTAINER_NAME umount $MOUNT_ISO_FOLDER
+docker exec $CONTAINER_NAME rm -f $ENM_ISO_FILENAME
+
+echo &quot;&quot;
+docker images
+echo &quot;&quot;
+
+echo &quot;Clean up&quot;
+docker stop $CONTAINER_NAME
+cd ..
+rm -rf $JOB_DIR
+
+echo &quot;&quot;
+docker images
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.16">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>true</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

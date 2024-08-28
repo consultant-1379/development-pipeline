@@ -1,0 +1,232 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job will use the terraform templates to provision the required cloud resources to install ENM.&#xd;
+</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>PUBLIC_CLOUD_INTERFACE_IMAGE</name>
+          <description>Which public-cloud-interface image to pull and use.</description>
+          <defaultValue>armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_PHASE1_PROV_CONTAINER</name>
+          <description>Container used to call terraform_wrapper</description>
+          <defaultValue>provision_resources_pre_phase1_enm_install</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>REGION</name>
+          <description>In which region to provision the resources</description>
+          <defaultValue>eu-west-1</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NAMESPACE</name>
+          <description>kubernetes namespace.
+also the first element of the ARN combination, which is like namespacestage-stage-name</description>
+          <defaultValue>ph1enmaws</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>STAGE</name>
+          <description>second element of the ARN combination, which is like namespacestage-stage-name</description>
+          <defaultValue>production</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NAME</name>
+          <description>third element of the ARN combination, which is like namespacestage-stage-name</description>
+          <defaultValue>enm</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>INSTANCE_TYPE</name>
+          <description>EC2 instance type</description>
+          <defaultValue>r4.4xlarge</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PHASE1_ENM_PROV_IMAGE</name>
+          <description>Where to push phase1 provisioning image, which has the modified input file, ready to call terraform destroy.</description>
+          <defaultValue>phase-1/enm-provisioning</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>TAG</name>
+          <description></description>
+          <defaultValue>1.0.${BUILD_NUMBER}</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ECR_LINK</name>
+          <description></description>
+          <defaultValue>152254703525.dkr.ecr.eu-west-1.amazonaws.com</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ARMDOCKER_REPO_USER</name>
+          <description></description>
+          <defaultValue>jnkcinmaas</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>ARMDOCKER_PASSWORD</name>
+          <description></description>
+          <defaultValue>f8ED/a+xTkVG52RKh4CvMmxlQSeDK7AjOAWZFC7+Wdn3QYix1XMcca21a9/x6TvL</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;Refresh armdocker access token.&quot;
+
+curl -u $ARMDOCKER_REPO_USER:$ARMDOCKER_PASSWORD -XPOST &quot;https://armdocker.rnd.ericsson.se/artifactory/api/security/token&quot; \
+-d &quot;username=$ARMDOCKER_REPO_USER&quot; \
+-d &quot;refreshable=true&quot; \
+-d &quot;scope=member-of-groups:*&quot; &gt; initialtoken.json
+
+read ACCESS_TOKEN &lt;&lt;&lt; $(cat initialtoken.json | jq -r &apos;.access_token&apos;)
+docker login armdocker.rnd.ericsson.se --username $ARMDOCKER_REPO_USER --password $ACCESS_TOKEN
+
+echo &quot;&quot;
+
+echo &quot;Pull PCI image.&quot;
+docker pull $PUBLIC_CLOUD_INTERFACE_IMAGE
+echo &quot;&quot;
+
+echo &quot;Prepare container.&quot;
+ec=0
+docker ps -a | grep $ENM_PHASE1_PROV_CONTAINER || ec=$?
+if [ $ec == 0 ]; then
+	if [ $(docker ps -a | grep $ENM_PHASE1_PROV_CONTAINER | awk &apos;{print $7}&apos;) ==  &quot;Up&quot; ]; then
+    	echo &quot;The container $ENM_PHASE1_PROV_CONTAINER is up.&quot;
+    else
+    	echo &quot;Starting the container $ENM_PHASE1_PROV_CONTAINER&quot;
+    	docker start $ENM_PHASE1_PROV_CONTAINER
+    fi
+else
+	echo &quot;Creating the container $ENM_PHASE1_PROV_CONTAINER&quot;
+    docker run -it -d -v /home/jenkins-nemesis/.aws:/root/.aws --name $ENM_PHASE1_PROV_CONTAINER $PUBLIC_CLOUD_INTERFACE_IMAGE
+fi
+echo &quot;&quot;
+
+echo &quot;Make required modifications on the input file.&quot;
+docker exec $ENM_PHASE1_PROV_CONTAINER sed -i s&quot;/\&quot;region\&quot;: \&quot;eu-west-1\&quot;/\&quot;region\&quot;: \&quot;$REGION\&quot;/g&quot; input.json
+
+docker exec $ENM_PHASE1_PROV_CONTAINER sed -i s&quot;/\&quot;namespace\&quot;: \&quot;ericsson\&quot;/\&quot;namespace\&quot;: \&quot;$NAMESPACE\&quot;/g&quot; input.json
+docker exec $ENM_PHASE1_PROV_CONTAINER sed -i s&quot;/\&quot;stage\&quot;: \&quot;production\&quot;/\&quot;stage\&quot;: \&quot;$STAGE\&quot;/g&quot; input.json
+docker exec $ENM_PHASE1_PROV_CONTAINER sed -i s&quot;/\&quot;name\&quot;: \&quot;jenkins\&quot;/\&quot;name\&quot;: \&quot;$NAME\&quot;/g&quot; input.json
+
+docker exec $ENM_PHASE1_PROV_CONTAINER sed -i s&quot;/\&quot;instance_type\&quot;: \&quot;t3.medium\&quot;/\&quot;instance_type\&quot;: \&quot;$INSTANCE_TYPE\&quot;/g&quot; input.json
+echo &quot;&quot;
+
+echo &quot;Commit changes on container and tag to push to ECR.&quot;
+docker commit $ENM_PHASE1_PROV_CONTAINER $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:$TAG
+docker tag $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:$TAG $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:latest
+echo &quot;&quot;
+
+echo &quot;Show input file contents.&quot;
+docker exec $ENM_PHASE1_PROV_CONTAINER cat input.json
+echo &quot;&quot;
+
+# TODO investigate the commented section below
+# apply fails with exit code 1, even though the templates apply successfully(build #16), the validation in terraform wrapper might have a problem which is returning code 1.
+# also terraform templates idempotency should be checked and confirmed with 2 or 3 or more consecutive terraform wrapper apply calls.
+#echo &quot;Provision resources.&quot;
+#docker exec $ENM_PHASE1_PROV_CONTAINER terraform_wrapper --operation all --input_file input.json || \
+#ec=$? &amp;&amp; \
+#if [ $ec != 0 ]; then
+#	echo &quot;terraform_wrapper failed with exit code: $ec&quot;
+#    exit $ec
+#fi
+
+echo &quot;Provision resources.&quot;
+docker exec $ENM_PHASE1_PROV_CONTAINER terraform_wrapper --operation all --input_file input.json
+if [[ ! $? == 0 ]] ; then
+	echo &quot;terraform_wrapper failed with exit code: $?&quot;
+    exit $?
+fi
+echo &quot;&quot;
+
+echo &quot;Execute ansible playbook for ENM integration&quot;
+docker exec $ENM_PHASE1_PROV_CONTAINER ansible-playbook /root/integration/enm/enm_aws_integration.yaml -i /root/integration/enm/inventories/production/hosts
+if [[ ! $? == 0 ]] ; then
+    echo &quot;intagration playbook failed with exit code: $?&quot;
+    exit $?
+fi
+echo &quot;&quot;
+
+echo &quot;Stop and remove the container $ENM_PHASE1_PROV_CONTAINER.&quot;
+docker stop $ENM_PHASE1_PROV_CONTAINER &amp;&amp; docker rm $ENM_PHASE1_PROV_CONTAINER
+
+echo &quot;Push $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:$TAG to ECR.&quot;
+docker push $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:$TAG
+echo &quot;&quot;
+
+echo &quot;Push $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:latest to ECR.&quot;
+docker push $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:latest
+echo &quot;&quot;
+
+echo &quot;Remove enm provisioning image(s) with build number and latest tags&quot;
+docker rmi $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:$TAG $ECR_LINK/$PHASE1_ENM_PROV_IMAGE:latest</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

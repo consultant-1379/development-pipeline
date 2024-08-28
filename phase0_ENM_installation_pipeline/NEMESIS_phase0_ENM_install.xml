@@ -1,0 +1,1279 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job will run periodically (daily) to install enm on aws.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+The job will do the following:&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+1. clone:&#xd;
+&lt;br&gt;&#xd;
+OSS/com.ericsson.oss.containerisation/ENM-containerisation-POC&#xd;
+&lt;br&gt;&#xd;
+ENMaaS/enm-public-cloud/enm-containerization-poc&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+2. Add Jenkins public IP to WAF IP set.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+3. Modify docker files, build and push to ECR.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+4. Pull init and modelserv images from Ericsson registry, modify links to use cloud front, tag and push to ECR.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+5. Pull latest public-cloud-interface image from ECR&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+6. Modify the yaml files related to ENM install.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+7. Try to commit the difference(if any) between OSS and ENMaaS repo, push to ENMaaS repo, then remove ENMaaS repo.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+8. Pre-ENM install check and cleanup.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+9. Add ec2 workers&apos; IPs to WAF IP set.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+10. Install:&#xd;
+&lt;br&gt;&#xd;
+    neo4j&#xd;
+	&lt;br&gt;&#xd;
+    ENM&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+11. Check install status&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+12. Add to domain&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+13. Post-ENM install cleanup.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+&#xd;
+14. Stop and remove public cloud interface container.&#xd;
+&lt;br&gt;&lt;br&gt;</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>GERRIT_USER</name>
+          <description>This gerrit user is used to interact with gerrit repositories and must be changed in the future to a more common one.</description>
+          <defaultValue>ehraole</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PUBLIC_CLOUD_INTERFACE_IMAGE</name>
+          <description>Which public-cloud-interface image to pull and use.</description>
+          <defaultValue>armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PUBLIC_CLOUD_INTERFACE_CONTAINER</name>
+          <description>public clound interface container&apos;s name.</description>
+          <defaultValue>public_cloud_interface_install_enm_$BUILD_NUMBER</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EXEC_ON_CONTAINER</name>
+          <description>execute on a running container.</description>
+          <defaultValue>docker exec $PUBLIC_CLOUD_INTERFACE_CONTAINER </defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EKS_CLUSTER_NAME</name>
+          <description>eks cluster name needed to get the config for kubectl, in order to be able to connect to it, this value should be known and provided beforehand.</description>
+          <defaultValue>enmaws-ericsson-phase-0-enm-cluster</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EFS_NAME</name>
+          <description></description>
+          <defaultValue>enmaws-ericsson-phase-0-enm-efs</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NS</name>
+          <description>namespace for enm and graphdb cleanup, install and destroy.</description>
+          <defaultValue>enmaws</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>REGION</name>
+          <description>aws region.</description>
+          <defaultValue>eu-west-1</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ECR_LINK</name>
+          <description>AWS ECR link</description>
+          <defaultValue>152254703525.dkr.ecr.eu-west-1.amazonaws.com</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CLOUD_FRONT_DOMAIN</name>
+          <description>Current cloud front domain name in use to reach enm related repos on S3.</description>
+          <defaultValue>d13h60r5ikn7wu.cloudfront.net</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_DOMAIN_NAME</name>
+          <description></description>
+          <defaultValue>ericsonenm.customers.enmaas.io</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### Refresh ecr token ###&quot;
+token=$(aws ecr get-login --no-include-email)
+$token
+echo &quot;&quot;</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &apos;### Clone OSS/ENM-containerisation-POC master ###&apos;
+git clone ssh://$GERRIT_USER@gerrit.ericsson.se:29418/OSS/com.ericsson.oss.containerisation/ENM-containerisation-POC
+echo &quot;&quot;
+
+echo &apos;### Clone ENMaaS/enm-containerization-poc master ###&apos;
+git clone ssh://$GERRIT_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/enm-containerization-poc
+echo &quot;&quot;
+
+echo &apos;### Latest commit on OSS/ENM-containerisation-POC master ###&apos;
+cd ENM-containerisation-POC/ &amp;&amp; git config pager.log false &amp;&amp; git log --stat HEAD^..HEAD &amp;&amp; cd ..
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+
+# Phase-0 ENM docker path
+PROJECT_PATH=&quot;./ENM-containerisation-POC&quot;
+ENM_PHASE0_PATH=&quot;${PROJECT_PATH}/phase-0&quot;
+
+# Base docker image data for ENM
+RHELBASE_IMAGE_NAME=&quot;eric-enm-rhel6base&quot;
+RHELJBOSS_IMAGE_NAME=&quot;eric-enm-rhel6jboss&quot;
+
+RHELBASE_IMAGE_CONTENT_PATH=&quot;${ENM_PHASE0_PATH}/${RHELBASE_IMAGE_NAME}/image_content&quot;
+RHELBASE_DOCKERIMAGE_PATH=&quot;${ENM_PHASE0_PATH}/${RHELBASE_IMAGE_NAME}&quot;
+RHELBASE_YUM_REPO_PATH=&quot;${RHELBASE_IMAGE_CONTENT_PATH}/yum.repos.d&quot;
+
+# Opendj file path to be modified
+OPENDJ_CONFIG_FILEPATH=&quot;${ENM_PHASE0_PATH}/eric-enmsg-opendj/image_content/opendj_config.sh&quot;
+
+# Map of rpm files used by Dockerfiles to be downloaded manually
+# Note: Do not specify the version of the package in the url.
+ES_URL=&quot;https://arm101-eiffel004.lmera.ericsson.se:8443/nexus/content/repositories/litp_releases/com/ericsson/nms/litp/3pps/EXTRlitprsyslogelasticsearch_CXP9032173&quot;
+declare -A MANUAL_DEP_MAP=( [&quot;EXTRlitprsyslogelasticsearch_CXP9032173&quot;]=&quot;${ES_URL}&quot; )
+
+# Base docker image repo addresses
+STATIC_REPO_ERIC_ADDRESS=&quot;cifwk-oss.lmera.ericsson.se\/static\/staticRepos&quot;
+#AWS_PKG_REPO_ADDRESS=&quot;s3-eu-west-1.amazonaws.com\/phase0-enm-installation-isos&quot;
+AWS_PKG_REPO_ADDRESS=$CLOUD_FRONT_DOMAIN
+
+# Docker registry addresses
+ERIC_ADDRESS=&quot;armdocker.rnd.ericsson.se\/proj_oss_releases&quot;
+#AWS_ADDRESS=&quot;152254703525.dkr.ecr.eu-west-1.amazonaws.com&quot;
+AWS_ADDRESS=$ECR_LINK
+
+# Docker image tags
+IMAGE_TAG=&quot;${BUILD_ID}&quot;
+
+function log_info() {
+    echo &quot;[INFO] $1&quot;
+}
+
+function log_error() {
+    echo &quot;[ERROR] $1&quot;
+}
+
+function log_warn() {
+    echo &quot;[WARN] $1&quot;
+}
+
+function print_sep() {
+    log_info &quot;====================================================================&quot;
+}
+
+function create_ecr_repo() {
+    local repo_name=&quot;enm/$1&quot;
+    local log_msg_prefix=&quot;ECR repository &apos;${repo_name}&apos;&quot;
+
+    log_info &quot;Look ${repo_name} up in AWS&quot;
+    aws ecr describe-repositories --repository-names ${repo_name}
+    if [[ $? -eq 0 ]]; then
+        log_info &quot;ECR repostiory ${repo_name} already exists!&quot;
+        return 0
+    fi
+
+    log_info &quot;${log_msg_prefix} does not exist yet, create a new one&quot;
+
+    aws ecr create-repository --repository-name ${repo_name}
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;${log_msg_prefix} could not be created&quot;
+        return ${status}
+    fi
+
+    json_policy=&quot;{\&quot;rules\&quot;:[{\&quot;action\&quot;:{\&quot;type\&quot;:\&quot;expire\&quot;},\&quot;selection\&quot;:{
+    \&quot;countType\&quot;:\&quot;imageCountMoreThan\&quot;,\&quot;countNumber\&quot;:5,\&quot;tagStatus\&quot;:\&quot;any\&quot;},
+    \&quot;description\&quot;:\&quot;Keep the latest + 4 images on repository.\&quot;,\&quot;rulePriority\&quot;:1}]}&quot;
+    aws ecr put-lifecycle-policy --repository-name &quot;${repo_name}&quot; --lifecycle-policy-text &quot;$json_policy&quot;
+
+    log_info &quot;${log_msg_prefix} was created successfully&quot;
+
+    return ${status}
+}
+
+function replace_on_file() {
+    local dir_path=&quot;$1&quot;
+    local file_name=&quot;$2&quot;
+    local old_str=&quot;$3&quot;
+    local new_str=&quot;$4&quot;
+
+    if [[ ! -d ${dir_path} ]]; then
+        log_error &quot;Expected a directory path &apos;${dir_path}&apos;&quot;
+        return 1
+    fi
+
+    find ${dir_path} -type f -name ${file_name} -not -path &quot;*/todo/*&quot; -exec sed -i &quot;s/${old_str}/${new_str}/g&quot; {} \;
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Error while replacing string on file ${file_name} (old-string=${old_str}|new-string=${new_str})&quot;
+    fi
+
+    return ${status}
+}
+
+function find_first_match_line() {
+    local file_path=&quot;$1&quot;
+    local search_str=&quot;$2&quot;
+
+    if [[ ! -f &quot;${file_path}&quot; ]]; then
+        log_error &quot;File &apos;${file_path}&apos; does not exist&quot;
+        return 1
+    fi
+
+    log_info &quot;Look for ${search_str} in file ${file_path}&quot;
+
+    reference_line=$(grep -n &quot;${search_str}&quot; &quot;${file_path}&quot; -m 1)
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_warn &quot;Could not find string &apos;${search_str}&apos; in file &apos;${file_path}&apos;&quot;
+        return ${status}
+    fi
+
+    line_number=$(echo &quot;${reference_line}&quot; | sed -r &apos;s/:.+//g&apos;)
+
+    return 0
+}
+
+function append_in_line() {
+    local line=&quot;$1&quot;
+    local text=&quot;$2&quot;
+    local file_path=&quot;$3&quot;
+
+    if [[ ! -f &quot;${file_path}&quot; ]]; then
+        log_error &quot;File &apos;${file_path}&apos; does not exist&quot;
+        return 1
+    fi
+
+    log_info &quot;Add string &apos;${text}&apos; in line ${line} of file &apos;${file_path}&apos;&quot;
+
+    sed -i &quot;${line} i\ ${text}&quot; &quot;${file_path}&quot;
+    local status=$?
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Could not add text to file &apos;${file_path}&apos; in line ${line}&quot;
+    fi
+
+    return ${status}
+}
+
+function downaload_file() {
+    local destination_path=&quot;$1&quot;
+    local url=&quot;$2&quot;
+    local file_name=&quot;$3&quot;
+
+    if [[ ! -d &quot;${destination_path}&quot; ]]; then
+        log_error &quot;Invalid destination folder &apos;${destination_path}&apos;&quot;
+        return 1
+    fi
+
+    if [[ ! -f &quot;${destination_path}/${file_name}&quot; ]]; then
+        local full_url=&quot;${url}/${file_name}&quot;
+
+        wget -P ${destination_path} ${full_url}
+        local status=$?
+        if [[ ! ${status} -eq 0 ]]; then
+            log_error &quot;Could not download file &apos;${full_url}&apos;&quot;
+            return ${status}
+        fi
+    fi
+
+    log_info &quot;File &apos;${destination_path}/${file_name}&apos; downloaded&quot;
+
+    return 0
+}
+
+function inject_manual_dep_docker() {
+    # Modify Dockerfile to refer to a local package instead of remote repo as follows:
+    # 1. Download desired package to image_content folder
+    # 2. Modify Dockerfile statements to copy the package to /var/tmp inside the docker image
+    # 3. Modify package instalation statement to use the rpm from /var/tmp
+    # Note: Packages should be mapped in MANUAL_DEP_MAP to get the URL
+    local docker_image_path=&quot;$1&quot;
+    local dependency_name=&quot;$2&quot;
+    local dependency_version=&quot;$3&quot;
+
+    local dockerfile_path=&quot;${docker_image_path}/Dockerfile&quot;
+
+    if [[ ! -f &quot;${dockerfile_path}&quot; ]]; then
+        log_error &quot;Dockerfile not found in &apos;${docker_image_path}&apos;&quot;
+        return 1
+    fi
+
+    local pkg_url=&quot;${MANUAL_DEP_MAP[${dependency_name}]}&quot;
+    if [[ ${pkg_url} == &quot;&quot; ]]; then
+        log_error &quot;Package &apos;${dependency_name}&apos; not found. Known dependencies are [${!MANUAL_DEP_MAP[@]}]&quot;
+        return 1
+    fi
+
+    local rpm_file=&quot;${dependency_name}-${dependency_version}.rpm&quot;
+
+    downaload_file &quot;${docker_image_path}/image_content&quot; &quot;${pkg_url}/${dependency_version}&quot; ${rpm_file}
+    if [[ ! $? -eq 0 ]]; then
+        return $?
+    fi
+
+    # Refrain from replacing over again if the rpm file reference was already added
+    find_first_match_line &quot;${dockerfile_path}&quot; &quot;${rpm_file}&quot;
+    if [[ $? -eq 0 ]]; then
+        return 0
+    fi
+
+    replace_on_file ${docker_image_path} &quot;Dockerfile&quot; ${dependency_name} &quot;\/var\/tmp\/${rpm_file}&quot;
+
+    find_first_match_line &quot;${dockerfile_path}&quot; &quot;COPY&quot;
+    if [[ ! $? -eq 0 ]]; then
+        return $?
+    fi
+
+    line_number=$(( line_number + 2 ))
+    append_in_line ${line_number} &quot;COPY image_content/${rpm_file} /var/tmp/&quot; ${dockerfile_path}
+
+    return $?
+}
+
+function check_status_exit() {
+    local status=&quot;$1&quot;
+
+    if [[ ! ${status} -eq 0 ]]; then
+        log_error &quot;Exit with error code (${status})&quot;
+        exit ${status}
+    fi
+}
+
+log_info &quot;### STEP 1. GET THE LIST OF DOCKERFILES TO BE PROCESSED BY THE SCRIPT ###&quot;
+RHEL_IMAGE_LIST=&quot;${RHELBASE_IMAGE_NAME} ${RHELJBOSS_IMAGE_NAME}&quot;
+
+# TODO Check if eric-nfs-client-provisioner should be a docker image, since it does not have Dockerfile
+IMAGES_TO_IGNORE=&apos;todo|eric-nfs-client-provisioner&apos;
+for docker_name in ${RHEL_IMAGE_LIST}; do
+    IMAGES_TO_IGNORE=&quot;${IMAGES_TO_IGNORE}|${docker_name}&quot;
+done
+DOCKERFILE_LIST=$(ls ${ENM_PHASE0_PATH} | grep eric | grep -E -v ${IMAGES_TO_IGNORE})
+PROCESSED_DOCKER_IMAGES=&quot;${RHEL_IMAGE_LIST} ${DOCKERFILE_LIST}&quot;
+
+log_info &quot;### STEP 2. CREATE ECR REPOS ON AWS ###&quot;
+for docker_name in ${PROCESSED_DOCKER_IMAGES}; do
+    create_ecr_repo ${docker_name}
+    check_status_exit $?
+done
+
+log_info &quot;### STEP 3. MODIFY ENM AND RHEL REPO ADDRESSES TO POINT TO AWS ###&quot;
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;cifwk_enm.repo&quot; ${STATIC_REPO_ERIC_ADDRESS} ${AWS_PKG_REPO_ADDRESS}
+check_status_exit $?
+
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;rhel.repo&quot; &quot;${STATIC_REPO_ERIC_ADDRESS}\/RHEL6.10_OS_Patch_Set&quot; &quot;${AWS_PKG_REPO_ADDRESS}\/RHEL\/RHEL6-2.1.2&quot;
+check_status_exit $?
+
+replace_on_file ${RHELBASE_YUM_REPO_PATH} &quot;*.repo&quot; &quot;\/latest&quot; &quot;&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 4. INJECT MANUALLY DOWNLOADED DEPENDENCIES TO RHEL BASE DOCKERFILE ###&quot;
+inject_manual_dep_docker ${RHELBASE_DOCKERIMAGE_PATH} &quot;EXTRlitprsyslogelasticsearch_CXP9032173&quot; &quot;1.1.5&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 5. CHANGE DOCKERFILES URLS TO AWS ###&quot;
+replace_on_file ${ENM_PHASE0_PATH} &quot;Dockerfile&quot; ${ERIC_ADDRESS} ${AWS_ADDRESS}
+check_status_exit $?
+
+# TODO Remove this once eric-enm-neo4j-extension-plugin dockerfile is fixed
+replace_on_file &quot;${ENM_PHASE0_PATH}/eric-enm-neo4j-extension-plugin&quot; &quot;Dockerfile&quot; &quot;1.30.3&quot; &quot;1.37.1&quot;
+check_status_exit $?
+
+# TODO Remove this once eric-enmsg-neo4j dockerfile is fixed
+replace_on_file &quot;${ENM_PHASE0_PATH}/eric-enmsg-neo4j&quot; &quot;Dockerfile&quot; &quot;COPY postgres_key.pem&quot; &quot;COPY image_content\/postgres_key.pem&quot;
+check_status_exit $?
+
+log_info &quot;### STEP 6. MODIFY OPENDJ_CONFIG FILE ###&quot;
+REMOVE_CMD=&quot;rm -rf /etc/security/limits.d/opendj_custom.conf&quot;
+find_first_match_line &quot;${OPENDJ_CONFIG_FILEPATH}&quot; &quot;${REMOVE_CMD}&quot;
+
+if [[ ! $? -eq 0 ]]; then
+    log_info &quot;Add command &apos;${REMOVE_CMD}&apos; to file &apos;${OPENDJ_CONFIG_FILEPATH}&apos;&quot;
+
+    find_first_match_line &quot;${OPENDJ_CONFIG_FILEPATH}&quot; &quot;#aws fixes&quot;
+    check_status_exit $?
+
+    line_number=$(( line_number + 2 ))
+    append_in_line ${line_number} &quot;${REMOVE_CMD}&quot; ${OPENDJ_CONFIG_FILEPATH}
+    check_status_exit $?
+fi
+
+# [NMAAS-4439] Fix package version mismatch
+sed -i -e &apos;s/-1.30.3//*&apos; $ENM_PHASE0_PATH/eric-enm-neo4j-extension-plugin/Dockerfile
+
+log_info &quot;### STEP 7. BUILD AND PUSH RHEL IMAGES ###&quot;
+
+for docker_name in ${RHEL_IMAGE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Build docker image ${full_image_name}&quot;
+    docker build -t &quot;${tagged_image}&quot; &quot;${ENM_PHASE0_PATH}/${docker_name}/.&quot; || check_status_exit $?
+    docker tag &quot;${tagged_image}&quot; &quot;${latest_image}&quot;
+
+    log_info &quot;Push docker image ${tagged_image}&quot;
+    docker push &quot;${tagged_image}&quot; || check_status_exit $?
+    docker push &quot;${latest_image}&quot; || check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;### STEP 8 BUILD REMAINING IMAGES ###&quot;
+for docker_name in ${DOCKERFILE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Build docker image ${full_image_name}&quot;
+    docker build -t &quot;${tagged_image}&quot; &quot;${ENM_PHASE0_PATH}/${docker_name}/.&quot; || check_status_exit $?
+    docker tag &quot;${tagged_image}&quot; &quot;${latest_image}&quot;
+    print_sep
+done
+
+log_info &quot;### STEP 9 PUSH REMAINING IMAGES ###&quot;
+for docker_name in ${DOCKERFILE_LIST}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Push docker image ${tagged_image}&quot;
+    docker push &quot;${tagged_image}&quot; || check_status_exit $?
+    docker push &quot;${latest_image}&quot; || check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;### STEP 10. CLEAN UP BUILD_ID TAGGED DOCKER IMAGES ###&quot;
+for docker_name in ${PROCESSED_DOCKER_IMAGES}; do
+    tagged_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:${IMAGE_TAG}&quot;
+
+    log_info &quot;Clean up docker image ${tagged_image}&quot;
+    docker rmi &quot;${tagged_image}&quot;
+    check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;### STEP 11. CLEAN UP LATEST TAGGED DOCKER IMAGES ###&quot;
+for docker_name in ${PROCESSED_DOCKER_IMAGES}; do
+    latest_image=&quot;${AWS_ADDRESS}/enm/${docker_name}:latest&quot;
+
+    log_info &quot;Clean up docker image ${latest_image}&quot;
+    docker rmi &quot;${latest_image}&quot;
+    check_status_exit $?
+
+    print_sep
+done
+
+log_info &quot;Docker build and push script has finished successfully&quot;
+echo &quot;&quot;</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Pull init and modelserv images from Ericsson&apos;s armdocker ###&quot;
+docker pull armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enm-init-container:test
+docker pull armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enmsg-modelserv:test
+echo &quot;&quot;
+
+CLOUD_FRONT_LINK=&quot;baseurl=http\:\/\/$CLOUD_FRONT_DOMAIN&quot;
+echo &quot;$CLOUD_FRONT_LINK&quot;
+echo &quot;&quot;
+
+
+echo &quot;### Modify rhel.repo and cifwk_enm.repo for eric-enm-init-container image to use cloudfront link to reach S3 ###&quot;
+docker run -d -it --name init_img_container armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enm-init-container:test bash
+
+docker exec init_img_container sed -i s&quot;/baseurl=https\:\/\/cifwk-oss.lmera.ericsson.se\/static\/staticRepos\/RHEL6.10_OS_Patch_Set\/latest/$CLOUD_FRONT_LINK/g&quot; /etc/yum.repos.d/rhel.repo
+
+docker exec init_img_container sed -i s&quot;/baseurl=https\:\/\/cifwk-oss.lmera.ericsson.se\/static\/staticRepos\/ENM\/latest/$CLOUD_FRONT_LINK\/ENM/g&quot; /etc/yum.repos.d/cifwk_enm.repo
+
+docker commit $(docker ps | grep init_img_container | awk &apos;{print $1}&apos;) $ECR_LINK/enm/eric-enm-init-container:test
+
+echo &quot;### create a another image with tag latest from eric-enm-init-container:test ###&quot;
+docker tag $ECR_LINK/enm/eric-enm-init-container:test $ECR_LINK/enm/eric-enm-init-container:latest
+echo &quot;&quot;
+
+
+echo &quot;### Modify rhel.repo and cifwk_enm.repo for eric-enmsg-modelserv image to use cloudfront link to reach S3 ###&quot;
+docker run -d -it --name modelserv_img_container armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enmsg-modelserv:test bash
+
+docker exec modelserv_img_container sed -i s&quot;/baseurl=https\:\/\/cifwk-oss.lmera.ericsson.se\/static\/staticRepos\/RHEL6.10_OS_Patch_Set\/latest/$CLOUD_FRONT_LINK/g&quot; /etc/yum.repos.d/rhel.repo
+
+docker exec modelserv_img_container sed -i s&quot;/baseurl=https\:\/\/cifwk-oss.lmera.ericsson.se\/static\/staticRepos\/ENM\/latest/$CLOUD_FRONT_LINK\/ENM/g&quot; /etc/yum.repos.d/cifwk_enm.repo
+
+docker commit $(docker ps | grep modelserv_img_container | awk &apos;{print $1}&apos;) $ECR_LINK/enm/eric-enmsg-modelserv:test
+echo &quot;&quot;
+
+
+echo &quot;### Show caontent rhel.repo and cifwk_enm.repo of all modified images ###&quot;
+docker images | egrep &quot;init|model&quot;
+
+docker run --rm $ECR_LINK/enm/eric-enm-init-container:test cat /etc/yum.repos.d/rhel.repo
+
+docker run --rm $ECR_LINK/enm/eric-enm-init-container:test cat /etc/yum.repos.d/cifwk_enm.repo
+
+docker run --rm $ECR_LINK/enm/eric-enm-init-container:latest cat /etc/yum.repos.d/rhel.repo
+
+docker run --rm $ECR_LINK/enm/eric-enm-init-container:latest cat /etc/yum.repos.d/cifwk_enm.repo
+
+docker run --rm $ECR_LINK/enm/eric-enmsg-modelserv:test cat /etc/yum.repos.d/rhel.repo
+
+docker run --rm $ECR_LINK/enm/eric-enmsg-modelserv:test cat /etc/yum.repos.d/cifwk_enm.repo
+echo &quot;&quot;
+
+
+echo &quot;### Push the created images to ECR ###&quot;
+docker push $ECR_LINK/enm/eric-enm-init-container:test
+docker push $ECR_LINK/enm/eric-enm-init-container:latest
+docker push $ECR_LINK/enm/eric-enmsg-modelserv:test
+echo &quot;&quot;
+
+
+echo &quot;### Stop and remove the containers ###&quot;
+docker stop init_img_container modelserv_img_container
+docker rm init_img_container modelserv_img_container
+echo &quot;&quot;
+
+echo &quot;### Remove the used and created images ###&quot;
+docker rmi -f $(docker images | egrep &quot;init|model&quot; | awk &apos;{print $3}&apos;)
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### Prepare neo4j.tgz with aws-efs storage class and ECR link ###&apos;
+
+mv ENM-containerisation-POC/phase-1/helm_charts/neo4j ENM-containerisation-POC/phase-1/helm_charts/neo4j_orig
+
+tar xvf ENM-containerisation-POC/phase-1/helm_charts/neo4j-0.7.2.tgz -C ENM-containerisation-POC/phase-1/helm_charts
+
+sed -i s&apos;/&quot;erikube-cinder&quot;/&quot;aws-efs&quot;/g&apos; ENM-containerisation-POC/phase-1/helm_charts/neo4j/values.yaml
+
+sed -i s&quot;/armdocker.rnd.ericsson.se\/proj_oss_releases/$ECR_LINK/g&quot; ENM-containerisation-POC/phase-1/helm_charts/neo4j/values.yaml
+
+sed -i s&apos;/global.//g&apos; ENM-containerisation-POC/phase-1/helm_charts/neo4j/templates/core-statefulset.yaml
+
+cd ENM-containerisation-POC/phase-1/helm_charts
+tar zcvf neo4j.tgz neo4j/
+cd $WORKSPACE
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### Modify integration-vaules.yaml ###&apos;
+
+intagration_values_file=&quot;ENM-containerisation-POC/phase-1/helm_charts/build/integration-vaules.yaml&quot;
+
+fs_id=$(aws efs describe-file-systems | egrep &quot;Name|FileSystemId&quot; | awk &quot;/$EFS_NAME/,/FileSystemId/&quot; | grep FileSystemId | awk &apos;{print $2}&apos; | tr -d \&quot;,)
+fs_server=&quot;$fs_id.efs.$REGION.amazonaws.com&quot;
+
+echo &quot;Change registry url from ericsson to ECR.&quot;
+sed -i s&quot;/armdocker.rnd.ericsson.se/$ECR_LINK/g&quot; $intagration_values_file
+echo &quot;&quot;
+
+echo &quot;Add efs id and path.&quot;
+sed -i -e &quot;/pullSecret:/a \\\n  nfs:\n    server: $fs_server\n    path: /&quot; $intagration_values_file
+echo &quot;&quot;
+
+echo &quot;Remove the unnecessary nfs provisioner section.&quot;
+perl -i -0pe &apos;s/  #nfs provisioner\n  nfsprovisioner:\n    server:\n    path://g&apos; $intagration_values_file
+echo &quot;&quot;
+
+echo &quot;Fill the StorageClass name field with the value aws-efs.&quot;
+perl -i -0pe &apos;s/  storageClass:\n    name:/  storageClass:\n    name: aws-efs/g&apos; $intagration_values_file
+echo &quot;&quot;
+
+echo &quot;Fill the ingress enmHost field with the required value.&quot;
+sed -i s&apos;/enmHost:/enmHost: enm-phase-0.athtem.eei.ericsson.se/g&apos; $intagration_values_file
+echo &quot;&quot;
+
+echo &quot;Fill the nfs storageClass field with the value aws-efs.&quot;
+perl -i -0pe &apos;s/  nfs:\n    storageClass:/  nfs:\n    storageClass: aws-efs/g&apos; $intagration_values_file
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### ENM installation related updates. ###&quot;
+echo &quot;&quot;
+
+echo &quot;### Update charts values.yaml file for all the service groups with aws docker repository and image path ###&quot;
+for i in ` find ENM-containerisation-POC/phase-1/helm_charts  -type f -name values.yaml |grep enm ` ; do
+
+    sed -i s&quot;/armdocker.rnd.ericsson.se/$ECR_LINK/g&quot; $i ;
+
+	sed -i s&apos;/proj_oss_releases\/enm/enm/g&apos; $i ;
+
+done
+
+echo &quot;&quot;
+
+echo &quot;### Update model charts with additional liveness probe timeout to allow model deployment to complete on the EFS filesystem ###&quot;
+sed -i s&apos;/initialDelaySeconds\: 10800/initialDelaySeconds\: 20800/g&apos; ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+echo &quot;### Update model charts with 4Gi for size and size2 ###&quot;
+
+sed -i s&apos;/size\: 1Gi/size\: 20Gi/g&apos; ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-modelserv/values.yaml
+sed -i s&apos;/size2\: 2Gi/size2\: 20Gi/g&apos; ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-modelserv/values.yaml
+sed -i s&apos;/size3\: 12Gi/size3\: 20Gi/g&apos; ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+echo &quot;### Update memory for modelserv chart ###&quot;
+
+sed -i s&apos;/memory\: 10Gi/memory\: 12Gi/g&apos; ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+&quot;## Replace the service for load balancer &quot;
+echo &quot;
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uiserv-deployment
+spec:
+  selector:
+    matchLabels:
+      app: uiserv
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: uiserv
+    spec:
+      initContainers:
+      - name: wait
+        resources:
+        image: armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enm-init-container
+        imagePullPolicy: Always
+        command: [&quot;/bin/sh&quot;, &quot;-c&quot;]
+        args:
+          - &apos;bash /var/tmp/check_service.sh -s gossiprouter-cache,gossiprouter-remoting,models,jms01,postgres,sps,sso -n enm1&apos;
+      containers:
+      - name: uiserv-sidecar
+        image: armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enm-uiservice-sidecar
+        imagePullPolicy: Always
+        env:
+          - name: UI_PRES_SERVER
+            value: &quot;enm1-phase-0.athtem.eei.ericsson.se&quot;
+        readinessProbe:
+          httpGet:
+            port: 12986
+          initialDelaySeconds: 60
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 2
+        volumeMounts:
+          - name: nfs-gp
+            mountPath: /gp
+          - name: nfs-data
+            mountPath: /ericsson/tor/data
+          - name: nfs-mdt
+            mountPath: /etc/opt/ericsson/ERICmodeldeployment
+      - name: uiserv
+        image: armdocker.rnd.ericsson.se/proj_oss_releases/enm/eric-enmsg-uiservice:test
+        imagePullPolicy: Always
+        readinessProbe:
+          httpGet:
+            port: 12987
+          initialDelaySeconds: 60
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 2
+        ports:
+          - containerPort: 8080
+          - containerPort: 8443
+          - containerPort: 9990
+          - containerPort: 9999
+          - containerPort: 4447
+          - containerPort: 45145
+          - containerPort: 9990
+          - containerPort: 3528
+          - containerPort: 45513
+          - containerPort: 8009
+          - containerPort: 8301
+          - containerPort: 44634
+          - containerPort: 44379
+          - containerPort: 12987
+          - containerPort: 9443
+          - containerPort: 4712
+          - containerPort: 4713
+          - containerPort: 3528
+          - containerPort: 3529
+          - containerPort: 55501
+          - containerPort: 55500
+        volumeMounts:
+          - name: nfs-gp
+            mountPath: /gp
+          - name: nfs-data
+            mountPath: /ericsson/tor/data
+          - name: nfs-mdt
+            mountPath: /etc/opt/ericsson/ERICmodeldeployment
+          - name: nfs-custom
+            mountPath: /ericsson/custom
+          - name: nfs-dumps
+            mountPath: /ericsson/enm/dumps
+          - name: nfs-dlms
+            mountPath: /ericsson/enm/dlms/history/data
+          - name: nfs-shared
+            mountPath: /ericsson/home
+          - name: nfs-ddcdata
+            mountPath: /var/ericsson/ddc_data
+          - name: nfs-norollback
+            mountPath: /ericsson/no_rollback
+          - name: nfs-batch
+            mountPath: /ericsson/batch
+      volumes:
+        - name: nfs-gp
+          configMap:
+            name: gpcloud
+        - name: nfs-data
+          persistentVolumeClaim:
+            claimName: nfs-data
+        - name: nfs-dumps
+          persistentVolumeClaim:
+            claimName: nfs-hcdumps
+        - name: nfs-mdt
+          persistentVolumeClaim:
+            claimName: nfs-mdt
+        - name: nfs-shared
+          persistentVolumeClaim:
+            claimName: nfs-home
+        - name: nfs-custom
+          persistentVolumeClaim:
+            claimName: nfs-custom
+        - name: nfs-dlms
+          persistentVolumeClaim:
+            claimName: nfs-dlms
+        - name: nfs-ddcdata
+          persistentVolumeClaim:
+            claimName: nfs-ddcdata
+        - name: nfs-norollback
+          persistentVolumeClaim:
+            claimName: nfs-norollback
+        - name: nfs-batch
+          persistentVolumeClaim:
+            claimName: nfs-batch
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uiserv
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:eu-west-1:152254703525:certificate/44fcfcc5-fa65-4c09-b7fc-c6a96ff28788
+  labels:
+    app: uiserv
+spec:
+  type: LoadBalancer
+  selector:
+    app: uiserv
+  ports:
+    - name: jboss
+      port: 8080
+      targetPort: 8080
+    - name: ejb
+      port: 4447
+      targetPort: 4447
+
+
+&quot; &gt; /ENM-containerisation-POC/phase-1/eric-enmsg-uiservice/eric-enmsg-uiservice.yaml</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Modify the alternative enm-installation-0.1.0.tgz ###&quot;
+
+
+
+mkdir ENM-containerisation-POC/phase-1/helm_charts/enm_extracted
+
+tar vxf ENM-containerisation-POC/phase-1/helm_charts/enm-installation-0.1.0.tgz -C ENM-containerisation-POC/phase-1/helm_charts/enm_extracted
+echo &quot;&quot;
+
+
+
+echo &quot;### Update charts values.yaml file for all the service groups with aws docker repository and image path ###&quot;
+for i in ` find ENM-containerisation-POC/phase-1/helm_charts/enm_extracted/enm-installation  -type f -name values.yaml |grep enm ` ; do
+
+	sed -i s&quot;/armdocker.rnd.ericsson.se/$ECR_LINK/g&quot; $i ;
+
+    sed -i s&apos;/proj_oss_releases\/enm/enm/g&apos; $i ;
+
+done
+echo &quot;&quot;
+
+
+
+echo &quot;### Update liveness probe timeout for modelserv chart to allow model deployment to complete on the EFS filesystem ###&quot;
+
+path_to_extracted=&quot;ENM-containerisation-POC/phase-1/helm_charts/enm_extracted&quot;
+
+sed -i s&apos;/initialDelaySeconds\: 10800/initialDelaySeconds\: 20800/g&apos; $path_to_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+
+echo &quot;### Update size, size2 and size3 for modelserv chart ###&quot;
+
+sed -i s&apos;/size\: 1Gi/size\: 20Gi/g&apos; $path_to_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml
+sed -i s&apos;/size2\: 2Gi/size2\: 20Gi/g&apos; $path_to_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml
+sed -i s&apos;/size3\: 12Gi/size3\: 20Gi/g&apos; $path_to_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+echo &quot;### Update memory for modelserv chart ###&quot;
+
+sed -i s&apos;/memory\: 10Gi/memory\: 12Gi/g&apos; $path_to_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml
+
+echo &quot;&quot;
+
+cd ENM-containerisation-POC/phase-1/helm_charts/enm_extracted
+tar czvf enm-installation.tgz enm-installation
+cd $WORKSPACE
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># uncomment the following lines if the directory ENM-containerisation-POC/phase-1/helm_charts/enm-installation gets deleted again on OSS repo.
+# and if the alternative enm-installation-0.1.0.tgz is not in use for ENM install anymore.
+
+#echo &quot;### Prepare enm-installation with Chart.yaml ###&quot;
+
+#mkdir ENM-containerisation-POC/phase-1/helm_charts/enm-installation
+#cp -r ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-* ENM-containerisation-POC/phase-1/helm_charts/enm-installation
+
+#cat&lt;&lt;&apos;EOF&apos; &gt; ENM-containerisation-POC/phase-1/helm_charts/enm-installation/Chart.yaml
+#apiVersion: v1
+#appVersion: &quot;1.0&quot;
+#description: A Helm chart for enm-installation
+#name: enm-installation
+#version: 0.1.0
+#EOF
+
+#echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### Copy modified files, commit and push to ENMaaS/enm-containerization-poc, then remove ENMaaS repo ###&apos;
+
+cp -r ENM-containerisation-POC/* enm-containerization-poc/
+
+cd enm-containerization-poc/
+
+git config user.name &quot;Jenkins_NEMESIS_phase0_ENM_install&quot;
+git config user.email &quot;PDLNEMESIS@pdl.internal.ericsson.com&quot;
+
+echo &quot;&quot;
+git add -A
+echo &quot;&quot;
+
+git diff --quiet &amp;&amp; git diff --staged --quiet || git commit -m &quot;$BUILD_NUMBER&quot;_&quot;$JOB_NAME&quot; -m &quot;$BUILD_URL&quot;
+
+git push origin master
+
+cd ..
+rm -rf enm-containerization-poc
+echo &quot;&quot;</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># These lines can be uncommented only if the alternative enm-installation-0.1.0.tgz is not in use for ENM install anymore.
+# echo &quot;### Package the modified helmcharts related to enm install ###&quot;
+# tar cvfz ENM-containerisation-POC/phase-1/helm_charts/enm-installation.tgz ENM-containerisation-POC/phase-1/helm_charts/eric-enmsg-*/
+# echo &quot;&quot;
+
+docker images
+docker ps
+echo &quot;&quot;
+
+echo &quot;### Pull public-cloud-interface image ###&quot;
+docker pull $PUBLIC_CLOUD_INTERFACE_IMAGE
+echo &quot;&quot;
+
+echo &quot;### Run a detached public-cloud-interface container ###&quot;
+
+docker run -d -it \
+-e EFS_NAME=&quot;$EFS_NAME&quot; -e NS=&quot;$NS&quot; \
+-v $WORKSPACE:/tmp/enm_poc \
+-v /home/jenkins-nemesis/.aws:/root/.aws \
+--name $PUBLIC_CLOUD_INTERFACE_CONTAINER $PUBLIC_CLOUD_INTERFACE_IMAGE /bin/bash
+
+$EXEC_ON_CONTAINER ls /tmp/enm_poc/ENM-containerisation-POC
+
+$EXEC_ON_CONTAINER ls -a /root/.kube
+
+$EXEC_ON_CONTAINER aws eks --region $REGION update-kubeconfig --name $EKS_CLUSTER_NAME
+sleep 2
+
+$EXEC_ON_CONTAINER ls -a /root/.kube
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Prepare pre and post enm install cleanup as a script ###&quot;
+
+rm -rf install_cleanup.sh
+
+cat&lt;&lt;&apos;EOF&apos; &gt; install_cleanup.sh
+#!/bin/bash
+
+echo &quot;elasticsearch cleanup.&quot;
+helm delete --purge elasticsearch-${NS}
+echo &quot;&quot;
+
+echo &quot;neo4j cleanup.&quot;
+helm delete --purge graphdb-${NS}
+echo &quot;&quot;
+
+echo &quot;pvc cleanup.&quot;
+# delete in backgound
+for i in $(kubectl get pvc --namespace ${NS} | egrep &apos;pv-eric|datadir&apos; | awk &apos;{print $1}&apos;);
+	do kubectl delete pvc $i --namespace ${NS} &amp;
+done
+
+# while delete is running in backgound, patch finalizers in case if any pvc is hanging in &quot;terminating&quot; state it will resolve that.
+for j in $(kubectl get pvc --namespace ${NS} | egrep &apos;pv-eric|datadir&apos; | awk &apos;{print $1}&apos;);	
+	do kubectl patch pvc $j -p &apos;{&quot;metadata&quot;:{&quot;finalizers&quot;:null}}&apos; --namespace ${NS}
+done
+
+echo &quot;&quot;
+
+echo &quot;enm installation cleanup.&quot;
+helm delete --purge installation-${NS}
+echo &quot;&quot;
+
+echo &quot;enm installation job cleanup.&quot;
+kubectl delete job installation-${NS}
+echo &quot;&quot;
+
+# Try to clean up the auxiliary installation pod, which is usually created after all pods are ready.
+echo &quot;try to cleanup installation pod.&quot;
+installation_pod=&quot;$(kubectl get pods --namespace ${NS} | grep &quot;installation-${NS}&quot; | awk &apos;{print $1}&apos;)&quot;
+if [ ! -z &quot;$installation_pod&quot; -a &quot;$installation_pod&quot; != &quot; &quot; ]; then
+	kubectl delete pod $installation_pod --namespace ${NS}
+
+        echo &quot;Wait 2 minutes for the pods to finish terminating&quot;
+        sleep 120
+fi
+
+echo &quot;All install_cleanup.sh commands were executed.&quot;
+EOF
+
+chmod ugo+x install_cleanup.sh
+
+container_id=$(docker ps | grep $PUBLIC_CLOUD_INTERFACE_CONTAINER | awk &apos;{print $1}&apos;)
+docker cp install_cleanup.sh $container_id:/tmp/enm_poc
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Pre-install cleanup ###&quot;
+
+$EXEC_ON_CONTAINER /tmp/enm_poc/install_cleanup.sh
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># Pre install statuses.
+
+echo &quot;&quot;
+$EXEC_ON_CONTAINER kubectl version
+echo &quot;&quot;
+
+echo &quot;&quot;
+$EXEC_ON_CONTAINER helm version
+echo &quot;&quot;
+
+echo &quot;&quot;
+$EXEC_ON_CONTAINER terraform_wrapper --version
+echo &quot;&quot;
+
+# later on, once the provisioning playbook and terraform templates are versioned, the versions need to be shown here too.
+
+echo &quot;&quot;
+$EXEC_ON_CONTAINER terraform version
+echo &quot;&quot;
+
+echo &quot;### Show which AWS account will be used for deploying ###&quot;
+$EXEC_ON_CONTAINER aws sts get-caller-identity
+echo &quot;&quot;
+
+echo &quot;### Show all helm releases across all namespaces ###&quot;
+$EXEC_ON_CONTAINER helm ls -a
+echo &quot;&quot;
+
+echo &quot;### Show all persistent volume claims for the specific namespace ###&quot;
+$EXEC_ON_CONTAINER kubectl get pvc --namespace ${NS}
+echo &quot;&quot;
+
+echo &quot;### Show pods for the specific namespace ###&quot;
+$EXEC_ON_CONTAINER kubectl get pods --namespace ${NS}
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># elastic search install was commented, because it will replaced by AWS elastic search, thus there&apos;s no need to install it.
+# Currently ES install fails because the pod tries to pull a wrong docker image, this needs to be debugged and fixed before uncommenting and running ENM install job.
+
+#echo &quot;### Update the helm charts values for the Elasticsearch, with amazon registry and image name ###&quot;
+
+#$EXEC_ON_CONTAINER helm upgrade --install elasticsearch-${NS} \
+#/tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/eric-enm-elasticsearch --namespace ${NS}
+
+#echo &quot;&quot;
+
+
+
+echo &quot;### Install neo4j, with Amazon registry (ECR) ###&quot;
+
+# can be uncommented only if the custom neo4j.tgz is not in use anymore.
+# NEO4J_VERSION=$(ls ENM-containerisation-POC/phase-1/helm_charts | grep neo4j- | cut -d&quot;-&quot; -f2 | cut -d&quot;.&quot; -f1-3)
+# $EXEC_ON_CONTAINER helm upgrade --install graphdb-${NS} /tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/neo4j-$NEO4J_VERSION.tgz \
+# --namespace ${NS} --wait --timeout 900
+
+$EXEC_ON_CONTAINER helm upgrade --install graphdb-${NS} /tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/neo4j.tgz --namespace ${NS} --wait --timeout 900
+
+echo &quot;&quot;
+
+
+
+echo &quot;### Install ENM ###&quot;
+
+# can be uncommented only if the alternative enm-installation-0.1.0.tgz is not in use for ENM install anymore.
+#$EXEC_ON_CONTAINER helm upgrade --install installation-${NS} \
+#--values /tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/build/integration-vaules.yaml \
+#/tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/enm-installation \
+#--namespace ${NS} --wait --timeout 20800
+
+$EXEC_ON_CONTAINER helm upgrade --install installation-${NS} \
+--values /tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/build/integration-vaules.yaml \
+/tmp/enm_poc/ENM-containerisation-POC/phase-1/helm_charts/enm_extracted/enm-installation.tgz \
+--namespace ${NS} --wait --timeout 20800
+
+
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Check enm install status ###&quot;
+
+$EXEC_ON_CONTAINER helm ls ${NS}
+echo &quot;&quot;
+
+status=$($EXEC_ON_CONTAINER helm status installation-${NS} | grep STATUS | head -1 | awk &apos;{print $2}&apos;)
+echo &quot;&quot;
+
+if [ ! -z &quot;$status&quot; -a &quot;$status&quot; != &quot; &quot; ]; then
+    if [ &quot;$status&quot; == &quot;DEPLOYED&quot; ]; then
+        echo &quot;installation-${NS} with status: $status, considered ok.&quot;
+    else
+        echo &quot;installation-${NS} with status: $status, considered failed.&quot; &amp;&amp; echo &quot;exiting with code 1.&quot; &amp;&amp; exit 1
+    fi
+# else branch disabled to avoid preventing jenkins job from continuing in case if the queried namespace was not found.
+#else
+#    echo &quot;invalid status: $status&quot; &amp;&amp; echo &quot;exiting with code 1.&quot; &amp;&amp; exit 1
+fi
+
+echo &quot;&quot;
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;##Stage 1 - Creating the url domain for the customer&quot;
+customersUrl=$ENM_DOMAIN_NAME
+
+echo &quot;##Stage 2 - Getting elb and cluster infos&quot;
+##Sleep 10 seconds in order to get the loadbalancer name, the aws cli wait function doesnt work here because the loadbalancer chacking is not active while the aplications are not working
+loadbalancername=`kubectl get svc| grep uiserv| awk &apos;{print $4}&apos;| cut -f2 -d-`
+while [ $loadbalancername == &quot;&lt;pending&gt;&quot; ]; do loadbalancername=`kubectl get svc| grep uiserv| awk &apos;{print $4}&apos;`;echo $loadbalancername; done
+loadbalancername=`kubectl get svc| grep uiserv| awk &apos;{print $4}&apos;| cut -f2 -d-`
+echo &quot;Loadbalancer name is $loadbalancername&quot;
+
+zoneID=&apos;Z3Q8C94KL6V96G&apos;
+eksCluster=$EKS_CLUSTER_NAME
+
+eksVPC=`aws eks describe-cluster --name $eksCluster | grep vpcId| awk &apos;{print $2}&apos;| tr -d &apos;&quot;&apos;`
+echo &quot;Get VPC $eksVPC&quot;
+
+elb=`aws elb describe-load-balancers  --load-balancer-name $loadbalancername | grep DNSName |awk &apos;{print $2}&apos;|tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+echo &quot;Get elb $elb&quot;
+
+elbZone=`aws elb describe-load-balancers  --load-balancer-name $loadbalancername | grep CanonicalHostedZoneNameID| awk &apos;{print $2}&apos;| tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+echo &quot;elbZone  $elbZone&quot;
+
+echo &quot;##Stage 3 - Getting SG and Subnets&quot;
+eksInfo=`aws eks describe-cluster --name $eksCluster`
+eksSubnet1=`echo $eksInfo|awk &apos;{print $20}&apos;|tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+eksSubnet2=`echo $eksInfo|awk &apos;{print $21}&apos;|tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+eksSubnet3=`echo $eksInfo|awk &apos;{print $22}&apos;|tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+securityGroupIds=`echo $eksInfo|awk &apos;{print $26}&apos;|tr -d &apos;&quot;&apos;|tr -d &quot;,&quot;`
+
+echo &quot;##Stage 4 - Creating $eksCluster.json&quot;
+echo &quot;
+{
+     \&quot;Comment\&quot;: \&quot;Creating Alias resource record sets in Route 53\&quot;,
+     \&quot;Changes\&quot;: [{
+                \&quot;Action\&quot;: \&quot;UPSERT\&quot;,
+                \&quot;ResourceRecordSet\&quot;: {
+                            \&quot;Name\&quot;: \&quot;$customersUrl\&quot;,
+                            \&quot;Type\&quot;: \&quot;A\&quot;,
+                            \&quot;AliasTarget\&quot;:{
+                                    \&quot;HostedZoneId\&quot;: \&quot;$elbZone\&quot;,
+                                    \&quot;DNSName\&quot;: \&quot;$elb\&quot;,
+                                    \&quot;EvaluateTargetHealth\&quot;: false
+                              }}
+                          }]
+}
+&quot; &gt; $eksCluster.json
+echo &quot;Created $eksCluster json&quot;
+
+echo &quot;##Stage 5 - Copy record to s3&quot;
+aws s3 cp $eksCluster.json s3://route53-enm-records/
+cat $eksCluster.json
+
+echo &quot;##Stage 6 -  Associate vpc with the hosted zone&quot;
+associate=`aws route53   associate-vpc-with-hosted-zone --hosted-zone-id $zoneID --vpc VPCRegion=eu-west-1,VPCId=$eksVPC`
+
+echo &quot;##Stage 7 - Create a route 53 record&quot;
+aws route53 change-resource-record-sets --hosted-zone-id $zoneID --change-batch file://$eksCluster.json
+
+echo &quot;##Stage 8 - Update Lambda Configuration&quot;
+aws lambda update-function-configuration --function-name ENM_CheckDomains --vpc-config SubnetIds=[&quot;$eksSubnet1&quot;,&quot;$eksSubnet2&quot;,&quot;$eksSubnet3&quot;],SecurityGroupIds=[&quot;$securityGroupIds&quot;]
+
+echo &quot;##Stage 9 - Run Lambda  to request the domain inside the VPC&quot;
+sleep 20
+lambda=`aws lambda invoke --function-name ENM_CheckDomains  --payload &quot;{\&quot;URL\&quot;:\&quot;$(echo &quot;$customersUrl.customers.enmaas.io&quot;):8080\&quot;}&quot;  --invocation-type RequestResponse --log-type Tail outputfile.txt | grep LogResult| awk -F&apos;&quot;&apos; &apos;{print $4}&apos; | base64 --decode| grep Hello`
+echo &quot;Test result was $lambda&quot;
+if [[ &quot;{\&quot;code\&quot;:\&quot;SUCCESS\&quot;,\&quot;message\&quot;:\&quot;Authentication Successful\&quot;}&quot; == $lambda ]]; then
+    echo &quot;Sucess&quot;
+    exit 0
+else
+    echo &quot;Error&quot;
+    exit 1
+fi;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># can be uncommented, but the next job is NEMESIS_phase0_ENM_installation_cluster_destroy, which will destroy the whole cluster anyway, so there&apos;s no need to cleanup the installations for now
+# echo &quot;### Post-install cleanup ###&quot;
+
+# $EXEC_ON_CONTAINER /tmp/enm_poc/install_cleanup.sh
+
+# echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Stop and remove public cloud interface container and image ###&quot;
+echo &quot;&quot;
+docker ps
+docker images
+echo &quot;&quot;
+
+docker stop $PUBLIC_CLOUD_INTERFACE_CONTAINER
+docker rm $PUBLIC_CLOUD_INTERFACE_CONTAINER
+
+# should not be enabled as long as the job NEMESIS_public_cloud_docker_cleanup handles the docker images cleanup on jenkins slave.
+# docker rmi -f $(docker images | grep public-cloud-interface | awk &apos;{print $3}&apos;)
+
+echo &quot;&quot;
+docker ps
+docker images
+echo &quot;&quot;
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

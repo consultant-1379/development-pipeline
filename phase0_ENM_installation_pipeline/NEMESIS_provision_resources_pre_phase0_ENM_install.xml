@@ -1,0 +1,170 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job will use the terraform templates to provision the required cloud resources to install ENM.&#xd;
+</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>JOB_TAG</name>
+          <description></description>
+          <defaultValue>phase0_enm_provisioning</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>TAG</name>
+          <description></description>
+          <defaultValue>${JOB_TAG}_${BUILD_NUMBER}</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.TextParameterDefinition>
+          <name>ENM_VALUES</name>
+          <description></description>
+          <defaultValue>{\n
+    &quot;region&quot;: &quot;eu-west-1&quot;,\n
+    &quot;key_name&quot;: &quot;jenkins&quot;,\n
+    &quot;namespace&quot;: &quot;enmaws&quot;,\n
+    &quot;stage&quot;: &quot;phase-0&quot;,\n
+    &quot;name&quot;: &quot;enm&quot;,\n
+    &quot;enabled&quot;: &quot;true&quot;,\n
+    &quot;vpc_cidr_block&quot;: &quot;10.0.0.0/16&quot;,\n
+    &quot;instance_type&quot;: &quot;r4.4xlarge&quot;,\n
+    &quot;max_size&quot;: 3,\n
+    &quot;min_size&quot;: 2,\n
+    &quot;availability_zones&quot;: [&quot;eu-west-1a&quot;, &quot;eu-west-1b&quot;, &quot;eu-west-1c&quot;],\n
+    &quot;kubernetes-version&quot;: &quot;1.12&quot;\n
+}
+</defaultValue>
+        </hudson.model.TextParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <jenkins.triggers.ReverseBuildTrigger>
+      <spec></spec>
+      <upstreamProjects>NEMESIS_phase0_ENM_installation_prepare_rpm_repo</upstreamProjects>
+      <threshold>
+        <name>SUCCESS</name>
+        <ordinal>0</ordinal>
+        <color>BLUE</color>
+        <completeBuild>true</completeBuild>
+      </threshold>
+    </jenkins.triggers.ReverseBuildTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>GIT_USER=ehraole
+CONTAINER_NAME=phase0_enm_provisioning
+IMAGE_NAME=phase-0/enm-provisioning
+
+echo &quot;Clone the projects being used for this job.&quot;
+git clone ssh://$GIT_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-wrapper-cli
+git clone ssh://$GIT_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-templates
+git clone ssh://$GIT_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/docker/public_cloud_interface
+
+echo &quot;Prepare the terraform_wrapper packages.&quot;
+docker run --rm -v $WORKSPACE/terraform-wrapper-cli:/tmp/terraform-wrapper-cli -w /tmp/terraform-wrapper-cli --name wrapper_container ammarov/python3_centos ./build.sh
+
+if [ &quot;$?&quot; != &quot;0&quot; ]; then
+    echo &quot;Error while building terraform_wrapper.&quot;
+    exit 1
+fi
+
+mv $WORKSPACE/terraform-wrapper-cli/terraform_wrapper_packaged.tar.gz $WORKSPACE
+WRAPPER_VERSION=$(tar tf terraform_wrapper_packaged.tar.gz | grep terraform_wrapper | cut -d&quot;_&quot; -f3 | cut -d&quot;-&quot; -f2)
+
+echo &quot;Prepare input json file.&quot;
+mkdir input
+echo -e $ENM_VALUES &gt; input/enm.json
+
+echo &quot;Build phase0 image and push to AWS ECR.&quot;
+mv $WORKSPACE/public_cloud_interface/Dockerfile $WORKSPACE
+docker build -t 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:$TAG --build-arg VERSION=$WRAPPER_VERSION .
+docker tag 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:$TAG 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:latest
+docker push 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:$TAG
+docker push 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:latest
+
+echo &quot;Execute provisioning of ENM component.&quot;
+docker run -t -d --rm -v /home/jenkins-nemesis/.aws:/root/.aws --name $CONTAINER_NAME 152254703525.dkr.ecr.eu-west-1.amazonaws.com/$IMAGE_NAME:latest
+docker exec $CONTAINER_NAME terraform_wrapper --operation all --input_file enm.json
+
+EXIT_CODE=$?
+if [ &quot;$EXIT_CODE&quot; != &quot;0&quot; ]; then
+    echo &quot;Error while running terraform_wrapper. Exit code: $EXIT_CODE.&quot;
+    exit 1
+fi
+
+echo &quot;Stop $CONTAINER_NAME container and remove $IMAGE_NAME image from local docker.&quot;
+docker stop $CONTAINER_NAME
+docker rmi -f $(docker images | grep ammarov | awk &apos;{print $3}&apos;)
+docker rmi -f $(docker images | grep $IMAGE_NAME | awk &apos;{print $3}&apos;)
+
+echo &quot;Remove build folder&quot;
+cd ..
+rm -rf $TAG
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>true</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

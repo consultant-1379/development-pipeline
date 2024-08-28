@@ -1,0 +1,140 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This job is intended to plan and apply resources to AWS.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>PUBLIC_CLOUD_INTERFACE_IMAGE</name>
+          <description>Which public-cloud-interface image to pull and use.</description>
+          <defaultValue>armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CONTAINER_NAME</name>
+          <description></description>
+          <defaultValue>nemesis_plan_apply_templates_$BUILD_NUMBER</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ARMDOCKER_REPO_USER</name>
+          <description></description>
+          <defaultValue>evrgsjn</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>ARMDOCKER_PASSWORD</name>
+          <description></description>
+          <defaultValue>ueCmOdhFqcePrnz5Q0K9X5t2Qfw7j+goHya8nCS+rso=</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <hudson.triggers.TimerTrigger>
+      <spec>H 8 * * *</spec>
+    </hudson.triggers.TimerTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### GET ARMDOCKER ACCESS TOKEN ###&quot;
+
+curl -u $ARMDOCKER_REPO_USER:$ARMDOCKER_PASSWORD -XPOST &quot;https://armdocker.rnd.ericsson.se/artifactory/api/security/token&quot; \
+-d &quot;username=$ARMDOCKER_REPO_USER&quot; \
+-d &quot;refreshable=true&quot; \
+-d &quot;scope=member-of-groups:*&quot; &gt; initialtoken.json
+
+read ACCESS_TOKEN &lt;&lt;&lt; $(cat initialtoken.json | jq -r &apos;.access_token&apos;)
+
+docker login armdocker.rnd.ericsson.se --username $ARMDOCKER_REPO_USER --password $ACCESS_TOKEN
+
+echo &quot;&quot;
+
+echo &apos;### STEP 1. PULL LATEST PUBLIC-CLOUD-INTERFACE IMAGE ###&apos;
+docker pull $PUBLIC_CLOUD_INTERFACE_IMAGE
+if [[ ! $? == 0 ]] ; then
+    echo &quot;!!! DOCKER PULL FAILED !!!&quot;
+    exit 1
+fi
+
+echo &apos;### STEP 2. CREATE CONTAINER ###&apos;
+docker run -d --rm -t --name $CONTAINER_NAME $PUBLIC_CLOUD_INTERFACE_IMAGE
+if [[ ! $? == 0 ]] ; then
+    echo &quot;!!! DOCKER RUN FAILED !!!&quot;
+    exit 1
+fi
+
+echo &apos;### STEP 3. EXECUTE PLAN &amp; APPLY COMMANDS ###&apos;
+docker exec $CONTAINER_NAME terraform_wrapper --operation all --input_file input.json
+if [[ ! $? == 0 ]] ; then
+    echo &quot;!!! DOCKER EXEC FAILED !!!&quot;
+    exit 1
+fi
+
+echo &apos;### STEP 4. CLEANUP ###&apos;
+docker stop $CONTAINER_NAME
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>true</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

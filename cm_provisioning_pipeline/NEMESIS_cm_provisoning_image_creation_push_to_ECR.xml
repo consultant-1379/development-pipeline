@@ -1,0 +1,141 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This Job is intended to create a client-machine provisioner image and the push the Image to Amazon ECR. This Job can be triggered by either of the two Pre-jobs:&#xd;
+	i. 	NEMESIS_cm_provisioning_dockerfile_Updated&#xd;
+	ii. NEMESIS_cm_provisioning_playbook_Updated</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>SSH_USER</name>
+          <description></description>
+          <defaultValue>ehraole</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>REPO_USER</name>
+          <description></description>
+          <defaultValue>evrgsjn</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>passw</name>
+          <description></description>
+          <defaultValue>ueCmOdhFqcePrnz5Q0K9X5t2Qfw7j+goHya8nCS+rso=</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>JOB_TAG</name>
+          <description></description>
+          <defaultValue>NEMESIS_cm_provisoning_image_creation_push_to_ECR</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+
+
+curl -u $REPO_USER:$passw -XPOST &quot;https://armdocker.rnd.ericsson.se/artifactory/api/security/token&quot; \
+-d &quot;username=evrgsjn&quot; \
+-d &quot;refreshable=true&quot; \
+-d &quot;scope=member-of-groups:*&quot; &gt; initialtoken.json
+
+
+read ACCESS_TOKEN &lt;&lt;&lt; $(cat initialtoken.json | jq -r &apos;.access_token&apos;)
+
+docker login armdocker.rnd.ericsson.se --username $REPO_USER --password $ACCESS_TOKEN</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### CLONE ANSIBLE PLAYBOOK PROJECT ###&apos;
+git clone ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/client-machine-provisioning
+echo &apos;### CLONE DOCKER FILE ###&apos;
+git clone ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/docker/cm-provisioning
+echo &apos;### PREPARE THE CONTEXT ###&apos;
+mv /jenkins/workspace/$JOB_TAG/label/nemesis/$BUILD_NUMBER/cm-provisioning/Dockerfile /jenkins/workspace/$JOB_TAG/label/nemesis/$BUILD_NUMBER
+rm -rf cm-provisioning</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>docker build -t armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning:$BUILD_NUMBER .
+
+docker tag armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning:$BUILD_NUMBER armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning:latest
+
+docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning:$BUILD_NUMBER
+docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/cm_provisioning:latest
+
+</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.BuildTrigger>
+      <childProjects>NEMESIS_public_cloud_interface_provisioning_image_creation_push_to_ECR</childProjects>
+      <threshold>
+        <name>SUCCESS</name>
+        <ordinal>0</ordinal>
+        <color>BLUE</color>
+        <completeBuild>true</completeBuild>
+      </threshold>
+    </hudson.tasks.BuildTrigger>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

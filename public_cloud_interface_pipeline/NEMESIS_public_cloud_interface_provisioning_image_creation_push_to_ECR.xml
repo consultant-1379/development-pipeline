@@ -1,0 +1,208 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This Job is triggered by either of the listed Pre-Jobs:&#xd;
+	i.	NEMESIS_public_cloud_interface_dockerfile_Updated	&#xd;
+	ii. NEMESIS_public_cloud_interface_input_Updated&#xd;
+	iii.NEMESIS_public_cloud_interface_templates_Updated&#xd;
+	iv.	NEMESIS_public_cloud_interface_wrapper_Updated&#xd;
+&#xd;
+Update at any of following (Dockerfile, Input Json file, Terraform templates, Tf wrapper) will trigger this Job which will build a Public-cloud-interface image&#xd;
+and Push the image to Amazon ECR.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>JOB_TAG</name>
+          <description></description>
+          <defaultValue>NEMESIS_public_cloud_interface_provisioning_image_creation_push_to_ECR</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>TAG</name>
+          <description></description>
+          <defaultValue>1.0.${BUILD_NUMBER}</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CONTAINER_NAME</name>
+          <description></description>
+          <defaultValue>nemesis_pci_inteface_container_$BUILD_NUMBER</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>CUR_JOB_PATH</name>
+          <description></description>
+          <defaultValue>/jenkins/workspace/${JOB_TAG}/label/nemesis/${BUILD_NUMBER}</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>SSH_USER</name>
+          <description></description>
+          <defaultValue>ehraole</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>passw</name>
+          <description></description>
+          <defaultValue>Itv7EwWL8Eo/MQwaeX+F2Jt2Qfw7j+goHya8nCS+rso=</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>REPO_USER</name>
+          <description></description>
+          <defaultValue>evrgsjn</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+
+curl -u $REPO_USER:$passw -XPOST &quot;https://armdocker.rnd.ericsson.se/artifactory/api/security/token&quot; \
+-d &quot;username=evrgsjn&quot; \
+-d &quot;refreshable=true&quot; \
+-d &quot;scope=member-of-groups:*&quot; &gt; initialtoken.json
+
+
+read ACCESS_TOKEN &lt;&lt;&lt; $(cat initialtoken.json | jq -r &apos;.access_token&apos;)
+
+docker login armdocker.rnd.ericsson.se --username $REPO_USER --password $ACCESS_TOKEN</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### STEP 1. PULL TERRAFORM WRAPPER CLI PROJECT ###&apos;
+git clone ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-wrapper-cli
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### STEP 2. CLONE TERRAFORM TEMPLATES ###&apos;
+git clone ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/terraform-templates
+
+echo &apos;### STEP 3. CLONE INPUT FILE ###&apos;
+mkdir input
+cp /home/jenkins-nemesis/input/input.json $CUR_JOB_PATH/input
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### STEP 4. CLONE PUBLIC_CLOUD_INTERFACE DOCKERFILE ###&apos;
+git clone ssh://$SSH_USER@gerrit.ericsson.se:29418/ENMaaS/enm-public-cloud/docker/public_cloud_interface
+mv $CUR_JOB_PATH/public_cloud_interface/Dockerfile $CUR_JOB_PATH
+rm -rf public_cloud_interface</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &apos;### STEP 5. BUILD PUBLIC-CLOUD-INTERFACE IMAGE AND PUSH TO AWS ECR ###&apos;
+
+docker build -t armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:$TAG .
+
+docker tag armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:$TAG armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest
+
+docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:$TAG
+docker push armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### Stop and remove used container. ###&quot;
+docker ps -a
+docker images
+echo &quot;&quot;
+
+docker stop $CONTAINER_NAME
+docker rm $CONTAINER_NAME
+
+echo &quot;&quot;
+docker ps -a
+docker images
+echo &quot;&quot;</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;### Tag terraform-templates and terraform-wrapper-cli. ###&quot;
+
+###TAG TERRAFROM TEMPLATES###
+cd $CUR_JOB_PATH/terraform-templates
+
+git config user.name &quot;jenkins_nemesis&quot;
+git config user.email &quot;PDLNEMESIS@pdl.internal.ericsson.com&quot;
+
+git tag -am &quot;Add $TAG tag&quot; $TAG
+git push origin $TAG
+
+echo &quot;### Tagged TERRAFROM TEMPLATES with $TAG&quot;
+cd -
+#############################
+
+###TAG TERRAFROM WRAPPER###
+cd $CUR_JOB_PATH/terraform-wrapper-cli
+
+git config user.name &quot;jenkins_nemesis&quot;
+git config user.email &quot;PDLNEMESIS@pdl.internal.ericsson.com&quot;
+
+git tag -am &quot;Add $TAG tag&quot; $TAG
+git push origin $TAG
+
+echo &quot;### Tagged TERRAFROM WRAPPER with $TAG&quot;
+cd -
+#############################</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>

@@ -1,0 +1,219 @@
+def EXEC_ON_CONTAINER(String ContainerName, String Command){
+    output= sh ( script: "docker exec  ${ContainerName}  ${Command}", returnStdout: true ).trim()
+    return output
+}
+pipeline {
+    agent any
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '7', artifactNumToKeepStr: '10'))
+    }
+    parameters {
+
+        string(defaultValue: 'PUBLIC_CLOUD_INTERFACE_CONTAINER_JENKINS', description: 'The name of the container to execute',  name: 'ContainerName')
+        string(defaultValue: 'armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest', description: 'Which public-cloud-interface image to pull and use', name: 'PUBLIC_CLOUD_INTERFACE_IMAGE')
+        string(defaultValue: 'eu-west-2',name: 'REGION', description: 'AWS regions')
+        string(defaultValue: ' ',name: 'INPUT_TEST', description: 'Input test variable, can be used to test features in the terraform templates like  ,\"enabled\": \"true\" ')
+
+    }
+
+
+    stages {
+        stage("Get TAG"){
+            steps {
+                script{
+                    TAG=sh (script: "echo ${GIT_BRANCH}| tr -d \"/\"", returnStdout: true ).trim()
+
+
+                    }
+                }
+            }
+        stage("Run PCI container"){
+            steps {
+                script{
+                sh (script: "docker run -d --rm -t --name ${params.ContainerName}${TAG}  ${params.PUBLIC_CLOUD_INTERFACE_IMAGE}")
+
+
+                }
+            }
+        }
+
+
+        stage("Git setup"){
+            steps {
+                script{
+
+                EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","git config --global user.email \"PDLNEMESIS@pdl.internal.ericsson.com\"")
+                EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","git config --global user.name \"Jenkins\"")
+                EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","git stash")
+                }
+            }
+        }
+
+        stage("Pull code review changes"){
+            steps {
+                script{
+                    withCredentials([usernamePassword(credentialsId: 'nemesis_functional_id', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                        EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","git pull https://${GIT_USERNAME}:${GIT_PASSWORD}@gerrit.ericsson.se/a/ENMaaS/enm-public-cloud/terraform-templates refs/changes/${GIT_BRANCH}")
+                    }
+                }
+            }
+        }
+
+
+
+	    stage("Creating input json"){
+            steps {
+                script{
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'aws_access_key', credentialsId: 'AWS_Credentials', secretKeyVariable: 'aws_secret_key']]) {
+                                input_json = """
+                                    |{
+                                    |    \"aws_access_key\": \"${aws_access_key}\",
+                                    |    \"aws_secret_key\": \"${aws_secret_key}\",
+                                    |    \"provider\": \"aws\",
+                                    |    \"region\": \"${params.REGION}\",
+                                    |    \"component\": \"enm\",
+                                    |    \"bucket\": \"ericsson-test-terraform\",
+                                    |    \"key_name\": \"jenkins\",
+                                    |    \"namespace\": \"ericsson\",
+                                    |    \"stage\": \"test\",
+                                    |    \"name\": \"jenkinscr\",
+                                    |    \"enabled\": \"true\",
+                                    |    \"docker_cidr_block\" : \"172.17.0.0/16\",
+                                    |    \"virtual_cloud_cidr_block\": \"10.0.0.0/16\",
+                                    |    \"allowed_cidr_blocks\": [\"129.192.74.5/32\", \"129.192.73.4/32\", \"79.140.216.227/32\", \"83.70.152.179/32\"],
+                                    |    \"instance_type\": \"t3.medium\",
+                                    |    \"max_size\": 3,
+                                    |    \"min_size\": 2,
+                                    |    \"kubernetes-version\": \"1.12\",
+                                    |    \"elasticsearch_version\": \"6.5\",
+                                    |    \"elasticsearch_ebs_volume_size\": \"10\",
+                                    |    \"elasticsearch_instance_count\": \"4\",
+                                    |    \"elasticsearch_iam_role_arns\": \"*\",
+                                    |    \"elasticsearch_iam_actions\": [\"es:ESHttpGet\", \"es:ESHttpPut\", \"es:ESHttpPost\", \"es:ESHttpHead\", \"es:ESHttpDelete\"],
+                                    |    \"elasticsearch_instance_type\": \"t2.small.elasticsearch\",
+                                    |    \"elasticsearch_zone_awareness_enabled\": \"true\",
+                                    |    \"elasticsearch_encrypt_at_rest_enabled\": \"false\",
+                                    |    \"elasticsearch_create_iam_service_linked_role\": \"false\",
+                                    |    \"elasticsearch_allow_explicit_index\": \"true\" ${params.INPUT_TEST}
+                                    |}
+                                    """
+
+                                writeFile file: 'input.json', text: input_json.stripMargin("|").trim()
+                                }
+
+                            }
+                        }
+                    }
+
+        stage("Write input json"){
+            steps {
+                script{
+
+                	sh "docker cp input.json ${params.ContainerName}${TAG}:/root/terraform-templates/input.json"
+
+
+                }
+            }
+        }
+
+
+
+        stage("Terraform wrapper apply execution"){
+            steps {
+                script{
+                EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","terraform_wrapper --operation all --input_file input.json")
+
+                }
+            }
+        }
+
+
+
+
+        stage("Copy integration playbook"){
+            steps {
+                script{
+                        withCredentials([usernamePassword(credentialsId: 'nemesis_functional_id', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                            EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","git clone https://${GIT_USERNAME}:${GIT_PASSWORD}@gerrit.ericsson.se/a/ENMaaS/enm-public-cloud/terraform-wrapper-cli")
+			                EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","cp -Rf terraform-wrapper-cli/integration /root/integration")
+                    }
+                }
+            }
+        }
+
+        stage("Execute ansible playbook"){
+            steps {
+                script{
+
+                    EXEC_ON_CONTAINER("${params.ContainerName}${TAG}","ansible-playbook /root/integration/enm/enm_aws_integration.yaml -i /root/integration/enm/inventories/production/hosts")
+
+                }
+            }
+        }
+
+        stage("Run PCI destroy container"){
+            steps {
+                script{
+                sh (script: "docker run -d --rm -t --name ${params.ContainerName}${TAG}-destroy ${params.PUBLIC_CLOUD_INTERFACE_IMAGE} ")
+
+
+                }
+            }
+        }
+
+
+
+        stage("cp input json on destroy"){
+            steps {
+                script{
+
+			        sh "docker cp input.json ${params.ContainerName}${TAG}-destroy:/root/terraform-templates/input.json"
+                }
+            }
+        }
+
+
+        stage("Terraform wrapper destroy execution"){
+            steps {
+                script{
+
+			        EXEC_ON_CONTAINER("${params.ContainerName}${TAG}-destroy","terraform_wrapper --operation destroy --input_file input.json")
+
+                }
+            }
+        }
+        stage("Remove container"){
+            steps {
+                script{
+
+                    sh "docker stop ${params.ContainerName}${TAG}"
+                    sh "docker stop ${params.ContainerName}${TAG}-destroy"
+
+                }
+            }
+        }
+
+    }
+
+     post {
+        success {
+            gerritReview labels: [Verified: 1]
+            }
+        failure {
+            script {
+                if (env.BRANCH_NAME == 'master') {
+                   emailext body: '''$DEFAULT_CONTENT
+                   ${FAILURE_STATUS}
+                   ${HTML_LOG_SCRIPT}''',
+                   to: 'PDLNEMESIS@pdl.internal.ericsson.com',
+                   subject: '$DEFAULT_SUBJECT'
+                  }
+                else {
+                    gerritReview labels: [Verified: -1]
+                   }
+                }
+            }
+
+    }
+}
+

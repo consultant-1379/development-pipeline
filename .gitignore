@@ -1,0 +1,5 @@
+phase0_ENM_installation_pipeline/output.json
+phase0_ENM_installation_pipeline/parser.py
+phase0_ENM_installation_pipeline/shell/output.json
+phase0_ENM_installation_pipeline/shell/parser.py
+phase0_ENM_installation_pipeline/shell/docker/*

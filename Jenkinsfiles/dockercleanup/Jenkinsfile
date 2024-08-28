@@ -1,0 +1,64 @@
+pipeline {
+    agent any
+
+    parameters {
+        text defaultValue: '''public-cloud-interface''',
+        description: 'Please list all images which need to considered for timely cleanup',
+        name: 'CUSTOM_IMAGE_LIST'
+    }
+
+    stages {
+        stage("Remove Dangling Images") {
+            steps {
+                script {
+                    sh (script: "docker rmi \$(docker images -qa --filter \"dangling=true\") || true", returnStdout: true).trim()
+                }
+            }
+        }
+
+        stage("Remove unused containers") {
+            steps {
+                script {
+                    echo "Remove all exited containers"
+                    sh (script: "docker container prune -f --filter \"until=168h\"", returnStdout: true).trim()
+
+                    echo "Remove old running containers"
+                    sh (script: "docker rm -f \$(docker ps | grep 'weeks ago' | awk 'NR > 1 {print \$1}') || true", returnStdout: true).trim()
+                }
+            }
+        }
+
+        stage("Get custom images") {
+            steps {
+                script {
+                    given_image_list = CUSTOM_IMAGE_LIST.split('\n')
+                    image_list = []
+
+                    for (image in given_image_list) {
+                        fullname_list = sh (script: "docker images | grep \"${image}\" | awk '{print \$1}' | uniq" , returnStdout: true).trim().split()
+
+                        for (full_name in fullname_list) {
+                            image_list.add(full_name)
+                        }
+                    }
+                }
+            }
+        }
+
+        stage("Cleanup Images") {
+            steps {
+                script {
+                    for (each in image_list) {
+                        echo each
+                        tags = sh ( script: "docker images | grep \"${each}\" | grep -v latest | awk '{print \$2}'| sort -n | head -n -3 | uniq", returnStdout: true).trim().split()
+
+                        for (tag in tags) {
+                            echo tag
+                            sh (script: "docker rmi \"${each}\":\"${tag}\" || true" , returnStdout: true).trim()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

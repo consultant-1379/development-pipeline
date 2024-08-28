@@ -1,0 +1,376 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project plugin="matrix-project@1.4.1">
+  <actions/>
+  <description>This Job runs the smoke tests to verify the Phase 0 ENM install is successful.&#xd;
+&lt;br&gt;&lt;br&gt;&#xd;
+Following Smoke tests are added:&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test1 - List all worker Nodes&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test2 - Check if all deployed pods are in &quot;Running&quot; state&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test3 - Verify replica count and status for Modelserv deployment&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test4 - Verify replica count and status for JMS deployment&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test5 - Check if neo4j pods are created successfully&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test6 - Check if EFS provisioner pod is created and running successfully&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test7 - Verify total running pod count&#xd;
+&lt;br&gt;&#xd;
+-----&#xd;
+&lt;br&gt;&#xd;
+Test8 - Verify total deployment count&#xd;
+&lt;br&gt;&#xd;
+&#xd;
+&#xd;
+</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.buildblocker.BuildBlockerProperty plugin="build-blocker-plugin@1.7.3">
+      <useBuildBlocker>false</useBuildBlocker>
+      <blockLevel>GLOBAL</blockLevel>
+      <scanQueueFor>DISABLED</scanQueueFor>
+      <blockingJobs></blockingJobs>
+    </hudson.plugins.buildblocker.BuildBlockerProperty>
+    <com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty plugin="eiffel-core@50.0.6">
+      <scriptEnabled>false</scriptEnabled>
+    </com.ericsson.duraci.messaging.ImplicitMessagingContributorProperty>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>7</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty plugin="eiffel-core@50.0.6">
+      <sequentialLinkingEnabled>false</sequentialLinkingEnabled>
+    </com.ericsson.duraci.messaging.SequentialSemanticEiffelMessageLinkingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelConfigurationNotificationMessagingJobProperty>
+    <com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty plugin="eiffel-core@50.0.6">
+      <messagingEnabled>false</messagingEnabled>
+      <jobFinishedDisabled>false</jobFinishedDisabled>
+    </com.ericsson.duraci.messaging.ImplicitEiffelMessagingJobProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.25">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>SSH_USER</name>
+          <description>SSH User to clone the Gerrit repos</description>
+          <defaultValue>ehraole</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EKS_CLUSTER</name>
+          <description>Name of the EKS Cluster created by the Deployment Job</description>
+          <defaultValue>enmaws-ericsson-phase-0-enm-cluster</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_NAMESPACE</name>
+          <description>Namespace for the ENM deployment in kubernetes</description>
+          <defaultValue>enmaws</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>RUNNING_ENM_POD_COUNT</name>
+          <description>Total Expected Running enm pods after installation </description>
+          <defaultValue>38</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>DEPLOYMENT_COUNT</name>
+          <description>Total expected enm deployments count </description>
+          <defaultValue>24</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_INSTALL_JOB</name>
+          <description>This is the Job in jenkins which installs the ENM. Smoke test Job fetches the latest stable build of the ENM_INSTALL_JOB</description>
+          <defaultValue>NEMESIS_phase0_ENM_install</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ENM_INSTALL_JOB_STABLE_BUILD_URL</name>
+          <description>Url to fetch the last stable build of ENM Install Job</description>
+          <defaultValue>https://fem001-eiffel016.rnd.ki.sw.ericsson.se:8443/jenkins/job/${ENM_INSTALL_JOB}/lastStableBuild/api/json</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PUBLIC_CLOUD_INTERFACE_IMAGE</name>
+          <description>Which public-cloud-interface image to pull and use.</description>
+          <defaultValue>armdocker.rnd.ericsson.se/proj-nmaas-pub/prod/public-cloud-interface:latest</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>JOB_CONTAINER</name>
+          <description>Default value &quot;job_name&quot; should be changed according to the new job&apos;s name.</description>
+          <defaultValue>NEMESIS_phase0_ENM_smoke_tests_$BUILD_NUMBER</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EXEC_ON_CONTAINER</name>
+          <description></description>
+          <defaultValue>docker exec $JOB_CONTAINER</defaultValue>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+    <com.ericsson.duraci.messaging.UserDomainSuffixJobProperty plugin="eiffel-core@50.0.6">
+      <enabled>false</enabled>
+      <userDomainSuffix></userDomainSuffix>
+    </com.ericsson.duraci.messaging.UserDomainSuffixJobProperty>
+  </properties>
+  <scm class="hudson.scm.NullSCM"/>
+  <assignedNode>nemesis</assignedNode>
+  <canRoam>false</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
+  <triggers>
+    <jenkins.triggers.ReverseBuildTrigger>
+      <spec></spec>
+      <upstreamProjects>NEMESIS_phase0_ENM_install</upstreamProjects>
+      <threshold>
+        <name>SUCCESS</name>
+        <ordinal>0</ordinal>
+        <color>BLUE</color>
+        <completeBuild>true</completeBuild>
+      </threshold>
+    </jenkins.triggers.ReverseBuildTrigger>
+  </triggers>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>nemesis</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+
+
+echo &apos;#######PULL LATEST PCI IMAGE#######&apos;
+
+docker pull $PUBLIC_CLOUD_INTERFACE_IMAGE
+
+
+echo &apos;#######CREATE AND RUN TEST CONTAINER#######&apos;
+
+docker run -d -it -v /home/jenkins-nemesis/.aws:/root/.aws --name $JOB_CONTAINER $PUBLIC_CLOUD_INTERFACE_IMAGE
+
+
+echo &quot;&quot;
+#echo &quot;### Adding user permissions to aws folder###&quot;
+#docker exec --privileged -u root $JOB_CONTAINER chown -Rf app-user:app-user /home/app-user/.aws
+
+echo &quot;&quot;
+echo &quot;### Creating KUBECONFIG FILE for kubectl to interact with cluster###&quot;
+$EXEC_ON_CONTAINER aws eks update-kubeconfig --name $EKS_CLUSTER
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #1: List all worker nodes###&quot;
+
+$EXEC_ON_CONTAINER kubectl get nodes
+
+if [[ ! $? == 0 ]] ; then
+    echo &quot;!!! CANT FETCH WORKER NODES !!!&quot;
+    exit 1
+fi</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #2: CHECK IF ALL PODS DEPLOYED ARE RUNNING###&quot;
+
+
+echo &quot;### GET LATEST SUCCESSFUL BUILD NUMBER FOR ENM PHASE 0 INSTALL JOB&quot;
+
+read INSTALL_JOB_BUILD_NUMBER &lt;&lt;&lt; $(curl -X GET $ENM_INSTALL_JOB_STABLE_BUILD_URL | jq -r &apos;.id&apos;)
+
+
+all_pods_deployed=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep -v installation-* | tail -n +2 | wc -l)
+
+
+all_running_pods=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep -v installation-* | grep 1/1 | wc -l)
+
+if [[ $all_pods_deployed == $all_running_pods ]] ; then
+    echo &quot;ALL PODS DEPLOYED ARE IN RUNNING STATE&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #3: VERIFY REPLICA COUNT AND STATUS FOR MODELSERV PODS&quot;
+
+echo &quot;### GET LATEST SUCCESSFUL BUILD NUMBER FOR ENM PHASE 0 INSTALL JOB&quot;
+
+read INSTALL_JOB_BUILD_NUMBER &lt;&lt;&lt; $(curl -X GET $ENM_INSTALL_JOB_STABLE_BUILD_URL | jq -r &apos;.id&apos;)
+
+mod_values_file=&quot;/jenkins/workspace/$ENM_INSTALL_JOB/label/nemesis/\
+$INSTALL_JOB_BUILD_NUMBER/ENM-containerisation-POC/phase-1/helm_charts/enm_extracted/enm-installation/charts/eric-enmsg-modelserv/values.yaml&quot;
+
+
+replicas=$(grep -A3 &apos;replicas-eric-enmsg-modelserv:&apos; $mod_values_file | head -n1); replicas=${replicas//*replicas-eric-enmsg-modelserv: /}; echo $replicas
+
+current_model_pod_count=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep models-* | grep 1/1 | wc -l)
+
+if [[ $current_model_pod_count == $replicas ]] ; then
+    echo &quot;ALL MODELSERV PODS DEPLOYED SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #4: VERIFY REPLICA COUNT AND STATUS FOR JMS PODS&quot;
+
+echo &quot;### GET LATEST SUCCESSFUL BUILD NUMBER FOR ENM PHASE 0 INSTALL JOB&quot;
+
+read INSTALL_JOB_BUILD_NUMBER &lt;&lt;&lt; $(curl -X GET $ENM_INSTALL_JOB_STABLE_BUILD_URL | jq -r &apos;.id&apos;)
+
+jms_values_file=&quot;/jenkins/workspace/$ENM_INSTALL_JOB/label/nemesis/\
+$INSTALL_JOB_BUILD_NUMBER/ENM-containerisation-POC/phase-1/helm_charts/enm_extracted/enm-installation/charts/eric-enmsg-jmsserver/values.yaml&quot;
+
+
+replicas=$(grep -A3 &apos;replicas-eric-enmsg-jmsserver:&apos; $jms_values_file | head -n1); replicas=${replicas//*replicas-eric-enmsg-jmsserver: /}; echo $replicas
+
+current_jms_pod_count=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep jms-* | grep 1/1 | wc -l)
+
+if [[ $current_jms_pod_count == $replicas ]] ; then
+    echo &quot;ALL JMS PODS DEPLOYED SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #5: CHECK IF NEO4J PODS ARE CREATED SUCCESSFULLY###&quot;
+
+echo &quot;### GET LATEST SUCCESSFUL BUILD NUMBER FOR ENM PHASE 0 INSTALL JOB&quot;
+
+read INSTALL_JOB_BUILD_NUMBER &lt;&lt;&lt; $(curl -X GET $ENM_INSTALL_JOB_STABLE_BUILD_URL | jq -r &apos;.id&apos;)
+
+echo INSTALL_JOB_BUILD_NUMBER
+
+neo4j_values_file=&quot;/jenkins/workspace/$ENM_INSTALL_JOB/label/nemesis/\
+$INSTALL_JOB_BUILD_NUMBER/ENM-containerisation-POC/phase-1/helm_charts/neo4j/values.yaml&quot;
+
+core=$(grep -A3 &apos;core:&apos; $neo4j_values_file | head -n2 | tail -n1); core=${core//*numberOfServers: /}; echo $core
+
+current_neo4j_pod_count=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep graphdb-neo4j-* | grep 1/1 | wc -l)
+
+echo $current_neo4j_pod_count
+
+if [[ $current_neo4j_pod_count == $core ]] ; then
+    echo &quot;ALL NEO4J PODS DEPLOYED SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi
+
+</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #6: CHECK IF EFS PROVISIONER POD IS RUNNING###&quot;
+
+
+pvc_bound_status=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep efs | grep 1/1 | wc -l)
+
+if [[ $pvc_bound_status == 1 ]] ; then
+    echo &quot;EFS POD RUNNING SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #7: CHECK TOTAL RUNNING POD COUNT###&quot;
+
+echo &quot;&quot;
+echo &quot;Expected Running Pod count&quot;
+echo $RUNNING_ENM_POD_COUNT
+
+current_running_pod_count=$($EXEC_ON_CONTAINER kubectl get pods -n $ENM_NAMESPACE | grep 1/1 | wc -l)
+
+if [[ $current_running_pod_count == $RUNNING_ENM_POD_COUNT ]] ; then
+    echo &quot;POD COUNT VERIFIED SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command>echo &quot;&quot;
+echo &quot;### SMOKE TEST #8: CHECK TOTAL DEPLOYMENT COUNT###&quot;
+
+echo &quot;&quot;
+echo &quot;Expected total deployment count&quot;
+echo $DEPLOYMENT_COUNT
+
+current_deployment_count=$($EXEC_ON_CONTAINER kubectl get deployments -n $ENM_NAMESPACE | egrep -v &quot;graphdb-*|efs-provisioner|AGE&quot; | wc -l)
+
+
+if [[ $current_deployment_count == $DEPLOYMENT_COUNT ]] ; then
+    echo &quot;DEPLOYMENT COUNT VERIFIED SUCCESSFULLY&quot;
+else
+    echo &quot;TEST FAILED!&quot;
+    exit 1
+fi</command>
+    </hudson.tasks.Shell>
+    <hudson.tasks.Shell>
+      <command># This snippet should be the last one in the jenkins job.
+echo &quot;&quot;
+echo &quot;&quot;
+echo &quot;### Stop and remove used container. ###&quot;
+docker ps -a
+docker images
+echo &quot;&quot;
+
+docker stop $JOB_CONTAINER
+docker rm $JOB_CONTAINER
+
+echo &quot;&quot;
+docker ps -a
+docker images
+echo &quot;&quot;</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers>
+    <hudson.tasks.Mailer plugin="mailer@1.23">
+      <recipients>PDLNEMESIS@pdl.internal.ericsson.com</recipients>
+      <dontNotifyEveryUnstableBuild>false</dontNotifyEveryUnstableBuild>
+      <sendToIndividuals>false</sendToIndividuals>
+    </hudson.tasks.Mailer>
+  </publishers>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+  <childCustomWorkspace>${COMBINATION}/${BUILD_NUMBER}</childCustomWorkspace>
+</matrix-project>
